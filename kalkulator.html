@@ -1,0 +1,2795 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalkulator Stok Min/Max dengan Analisis ABC-XYZ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- BARU: Menambahkan Chart.js dan plugin datalabels -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glow-color: #08d9d6;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            scroll-behavior: smooth;
+            background-color: #0f172a; /* bg-slate-900 */
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .futuristic-card {
+            background-color: rgba(30, 41, 59, 0.5); /* bg-slate-800 with opacity */
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(51, 65, 85, 0.7); /* slate-700 */
+            box-shadow: 0 0 15px rgba(8, 217, 214, 0.1);
+        }
+        .futuristic-button {
+            background: linear-gradient(45deg, #252a7b, #08d9d6);
+            border: none;
+            box-shadow: 0 0 20px rgba(8, 217, 214, 0.4);
+            transition: all 0.3s ease;
+        }
+        .futuristic-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(8, 217, 214, 0.7);
+        }
+        .futuristic-button:disabled {
+            background: #334155; /* slate-700 */
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        /* Tombol sekunder (seperti tombol Dashboard) */
+        .secondary-button {
+           background-color: #334155; /* slate-700 */
+           border: 1px solid #475569; /* slate-600 */
+           box-shadow: none;
+           transition: all 0.2s ease;
+        }
+        .secondary-button:hover:not(:disabled) {
+           background-color: #475569; /* slate-600 */
+           transform: translateY(-1px);
+           box-shadow: 0 0 10px rgba(8, 217, 214, 0.2);
+        }
+        .secondary-button.active { /* Saat dashboard aktif */
+           background: linear-gradient(45deg, #1e3a8a, #06b6d4); /* Warna sedikit berbeda */
+           box-shadow: 0 0 15px rgba(8, 217, 214, 0.3);
+           border-color: #08d9d6;
+        }
+
+        .file-input-label {
+            background-color: rgba(15, 23, 42, 0.5); /* bg-slate-900 with opacity */
+            border-color: rgba(8, 217, 214, 0.3);
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            border-style: dashed; /* Default ke dashed */
+            border-width: 2px; /* Set border width */
+        }
+        .file-input-label:hover {
+            border-color: var(--glow-color);
+            background-color: rgba(8, 217, 214, 0.1);
+        }
+        /* BARU: Gaya untuk state success */
+        .file-input-label.success {
+           border-color: var(--glow-color); /* Border warna glow */
+           background-color: rgba(8, 217, 214, 0.05); /* Background sedikit lebih gelap */
+           border-style: solid; /* Ganti ke solid */
+           box-shadow: 0 0 8px rgba(8, 217, 214, 0.3); /* Tambah sedikit glow */
+        }
+        /* BARU: Menyamakan tinggi label */
+        .file-upload-card-content {
+            min-height: 140px; /* Sesuaikan nilai ini jika perlu */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .progress-bar {
+            background-color: var(--glow-color);
+            transition: width 0.3s ease-in-out;
+            background-image: linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
+            background-size: 40px 40px;
+            animation: animate-progress 2s linear infinite;
+        }
+        .spinner {
+            border-top-color: transparent;
+            border-left-color: #fff;
+            border-bottom-color: #fff;
+            border-right-color: #fff;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes animate-progress {
+            0% { background-position: 40px 0; }
+            100% { background-position: 0 0; }
+        }
+        td[data-cell-type] {
+            cursor: pointer;
+        }
+        /* DIUBAH: Menambahkan data-definition */
+        th[data-sort], th[data-definition] {
+            position: relative;
+            cursor: pointer;
+            user-select: none;
+        }
+        th[data-sort]:hover, th[data-definition]:hover {
+            background-color: #1e293b; /* slate-800 */
+        }
+        .sort-arrow {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            vertical-align: middle;
+            margin-left: 4px;
+            opacity: 0.4;
+        }
+        th.sorted .sort-arrow {
+            opacity: 1;
+            color: var(--glow-color);
+        }
+        .sort-arrow.asc::after { content: '▲'; font-size: 0.8em; }
+        .sort-arrow.desc::after { content: '▼'; font-size: 0.8em; }
+        #results-table-body tr:hover td[data-cell-type] {
+            background-color: rgba(8, 217, 214, 0.05);
+        }
+        #results-section table th, #results-section table td {
+            font-size: 11px;
+            padding-left: 0.5rem; /* 8px */
+            padding-right: 0.5rem; /* 8px */
+        }
+        /* Custom Scrollbar for table container */
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #1e293b; /* slate-800 */
+            border-radius: 10px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: var(--glow-color);
+            border-radius: 10px;
+        }
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #07a6a3;
+        }
+        /* Pagination Styles */
+        .pagination-btn {
+            background-color: #334155; /* slate-700 */
+            transition: all 0.2s ease;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background-color: #475569; /* slate-600 */
+        }
+        .pagination-btn.active {
+            background-color: var(--glow-color);
+            color: #0f172a;
+            font-weight: bold;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        /* Badge Styles for ABC-XYZ */
+        .abc-xyz-badge {
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 10px;
+            text-align: center;
+            display: inline-block;
+            min-width: 20px;
+        }
+        .badge-a { background-color: #ef4444; color: white; }
+        .badge-b { background-color: #f97316; color: white; }
+        .badge-c { background-color: #eab308; color: white; }
+        .badge-x { background-color: #22c55e; color: white; }
+        .badge-y { background-color: #3b82f6; color: white; }
+        .badge-z { background-color: #8b5cf6; color: white; }
+        .policy-table td { padding: 4px 8px; font-size: 11px; }
+        /* Badge Styles for Stock Status */
+        /* DIUBAH: Menukar warna Under dan Over agar lebih intuitif (Merah=Over, Kuning=Under) */
+        .badge-under-stock { background-color: #facc15; color: white; } /* yellow-400 */
+        .badge-balance-stock { background-color: #4ade80; color: white; } /* green-400 */
+        .badge-over-stock { background-color: #f87171; color: white; } /* red-400 */
+
+        /* Badge Styles for Level Movement */
+        .badge-fast-moving { background-color: #22d3ee; color: white; } /* cyan-400 */
+        .badge-medium-moving { background-color: #a78bfa; color: white; } /* violet-400 */
+        .badge-slow-moving { background-color: #f8b44e; color: white; } /* orange-300 */
+        .badge-non-moving { background-color: #64748b; color: white; } /* slate-500 */
+
+        /* BARU: Style untuk Dashboard KPI */
+        .kpi-nav-btn {
+            background-color: #334155; /* slate-700 */
+            transition: all 0.2s ease;
+        }
+        .kpi-nav-btn:hover {
+            background-color: #475569; /* slate-600 */
+        }
+        .kpi-nav-btn.active {
+            background: linear-gradient(45deg, #252a7b, #08d9d6);
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 0 15px rgba(8, 217, 214, 0.3);
+        }
+        #kpi-summary-table th {
+            background-color: #1e293b; /* slate-800 */
+        }
+        #kpi-summary-table td, #kpi-summary-table th {
+            font-size: 11px;
+            padding: 6px 10px;
+            text-align: center;
+        }
+        #kpi-summary-table tbody tr:nth-child(odd) {
+            background-color: #1a2433;
+        }
+        /* BARU: Style untuk tombol hapus */
+        .danger-button {
+            background: #9f1239; /* red-800 */
+            border: 1px solid #7f1d1d; /* red-900 */
+            box-shadow: none;
+            transition: all 0.2s ease;
+        }
+        .danger-button:hover:not(:disabled) {
+            background: #ef4444; /* red-500 */
+            transform: translateY(-1px);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+        }
+    </style>
+</head>
+<body class="text-slate-300">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div id="setup-section">
+            <header class="text-center mb-12">
+                <h1 class="text-3xl sm:text-5xl font-bold text-white">MIN/MAX STOCK CALCULATOR</h1>
+                <p class="mt-2 text-md text-slate-400">with Strategic Analysis & Calculation</p>
+            </header>
+
+            <!-- BARU: Kartu Histori Sesi -->
+            <div class="max-w-6xl mx-auto mb-8">
+                <div class="futuristic-card p-6 rounded-lg text-left">
+                    <h3 class="text-xl font-bold text-white mb-4">Muat Sesi Histori</h3>
+                    <div class="flex flex-col sm:flex-row gap-4 items-center">
+                        <div class="relative w-full sm:flex-1">
+                            <select id="history-select" class="h-10 w-full pl-3 pr-10 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white appearance-none text-sm">
+                                <option value="">Pilih sesi untuk dimuat...</option>
+                                <!-- Opsi akan diisi oleh JS -->
+                            </select>
+                            <svg class="w-5 h-5 absolute text-slate-500 top-1/2 right-3 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                        <button id="load-session-btn" class="h-10 futuristic-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm" disabled>
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Muat Sesi
+                        </button>
+                        <button id="delete-session-btn" class="h-10 danger-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm" disabled>
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            Hapus Sesi
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 max-w-6xl mx-auto">
+                <!-- Card 1: Upload GI -->
+                <div class="futuristic-card p-6 rounded-lg file-upload-card-content">
+                    <div>
+                        <h2 class="text-xl font-semibold mb-3 text-white">1. Unggah Histori Pemakaian (GI)</h2>
+                        <p class="text-sm text-slate-400 mb-4 h-12">File Excel (MB51 - "Probabilistic") 12 bulan terakhir.</p>
+                    </div>
+                    <div>
+                        <input type="file" id="gi-file" class="hidden" accept=".xlsx, .xls">
+                        <label for="gi-file" id="gi-file-label" class="file-input-label flex items-center justify-center w-full p-4 rounded-lg text-slate-400 text-sm h-20">
+                            <div class="default-content flex items-center justify-center w-full">
+                                <svg class="w-8 h-8 mr-3 icon-default" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                <svg class="w-8 h-8 mr-3 icon-success hidden" style="color: var(--glow-color);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span id="gi-file-name" class="break-all text-center">Pilih File GI</span>
+                            </div>
+                            <div class="progress-container hidden absolute inset-0 bg-slate-900/50 rounded-lg p-2 flex flex-col items-center justify-center w-full">
+                                <div class="w-11/12 bg-slate-700 rounded-full h-2 overflow-hidden"><div class="progress-bar h-2 rounded-full" style="width: 0%;"></div></div>
+                                <span class="progress-text text-xs mt-2 text-white">0%</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                <!-- Card 2: Upload LT -->
+                <div class="futuristic-card p-6 rounded-lg file-upload-card-content">
+                    <div>
+                        <h2 class="text-xl font-semibold mb-3 text-white">2. Unggah Histori Lead Time (LT)</h2>
+                        <p class="text-sm text-slate-400 mb-4 h-12">File Excel (ZMMR004 - "Probabilistic") pengiriman.</p>
+                    </div>
+                    <div>
+                        <input type="file" id="lt-file" class="hidden" accept=".xlsx, .xls">
+                        <label for="lt-file" id="lt-file-label" class="file-input-label flex items-center justify-center w-full p-4 rounded-lg text-slate-400 text-sm h-20">
+                             <div class="default-content flex items-center justify-center w-full">
+                                <svg class="w-8 h-8 mr-3 icon-default" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                <svg class="w-8 h-8 mr-3 icon-success hidden" style="color: var(--glow-color);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span id="lt-file-name" class="break-all text-center">Pilih File LT</span>
+                             </div>
+                             <div class="progress-container hidden absolute inset-0 bg-slate-900/50 rounded-lg p-2 flex flex-col items-center justify-center w-full">
+                                <div class="w-11/12 bg-slate-700 rounded-full h-2 overflow-hidden"><div class="progress-bar h-2 rounded-full" style="width: 0%;"></div></div>
+                                <span class="progress-text text-xs mt-2 text-white">0%</span>
+                             </div>
+                        </label>
+                    </div>
+                </div>
+                <!-- Card 3: Upload Stok -->
+                <div class="futuristic-card p-6 rounded-lg file-upload-card-content">
+                       <div>
+                            <h2 class="text-xl font-semibold mb-3 text-white">3. Unggah Aktual Stok (MB52_SOH)</h2>
+                            <p class="text-sm text-slate-400 mb-4 h-12">File Excel (MB52) stok 'Unrestricted' saat ini.</p>
+                       </div>
+                       <div>
+                            <input type="file" id="stock-file" class="hidden" accept=".xlsx, .xls, .csv">
+                            <label for="stock-file" id="stock-file-label" class="file-input-label flex items-center justify-center w-full p-4 rounded-lg text-slate-400 text-sm h-20">
+                                 <div class="default-content flex items-center justify-center w-full">
+                                    <svg class="w-8 h-8 mr-3 icon-default" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                    <svg class="w-8 h-8 mr-3 icon-success hidden" style="color: var(--glow-color);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <span id="stock-file-name" class="break-all text-center">Pilih File Stok</span>
+                                 </div>
+                                 <div class="progress-container hidden absolute inset-0 bg-slate-900/50 rounded-lg p-2 flex flex-col items-center justify-center w-full">
+                                    <div class="w-11/12 bg-slate-700 rounded-full h-2 overflow-hidden"><div class="progress-bar h-2 rounded-full" style="width: 0%;"></div></div>
+                                    <span class="progress-text text-xs mt-2 text-white">0%</span>
+                                 </div>
+                            </label>
+                       </div>
+                </div>
+            </div>
+
+            <!-- Tombol Kalkulasi -->
+            <div class="text-center mb-8">
+                <button id="calculate-btn" class="futuristic-button text-white font-bold py-3 px-12 rounded-lg flex items-center justify-center mx-auto">
+                    Hitung Stok & Analisis
+                </button>
+            </div>
+
+            <!-- Info Petunjuk & Formula -->
+            <div id="info-section" class="max-w-6xl mx-auto futuristic-card p-6 rounded-lg text-left">
+                 <h3 class="text-xl font-bold text-white mb-3 border-b border-slate-700 pb-2">Petunjuk & Formulasi Strategis</h3>
+                <p class="text-slate-400 mb-4">
+                    Metode ini mengkombinasikan klasifikasi ABC-XYZ dengan formula statistik untuk menghasilkan Safety Stock yang ideal. Safety Stock kini dihitung berdasarkan <b>Target Service Level</b> yang berbeda untuk setiap kelas, memastikan item krusial lebih terlindungi.
+                </p>
+                <div id="formula-display" class="bg-slate-900 border border-slate-700 rounded-lg p-4">
+                    <h4 class="font-semibold text-white mb-3">Formula Inti yang Digunakan:</h4>
+                         <ul class="space-y-3 text-sm text-slate-300">
+                               <li class="flex flex-col sm:flex-row sm:items-center">
+                                    <span class="font-mono bg-slate-700 text-cyan-400 rounded px-2 py-1 mr-4 w-auto sm:w-52 text-left sm:text-right">Safety Stock (SS)</span>
+                                    <span class="font-mono text-xs">= Z &times; &radic;( (AvgLT &times; StdDev(D)<sup>2</sup>) + (AvgD<sup>2</sup> &times; StdDev(LT)<sup>2</sup>) )</span>
+                               </li>
+                               <li class="flex flex-col sm:flex-row sm:items-center">
+                                    <span class="font-mono bg-slate-800 text-slate-400 rounded px-2 py-1 mr-4 w-auto sm:w-52 text-left sm:text-right">Z-score</span>
+                                    <span class="font-mono text-xs">Nilai statistik berdasarkan Target Service Level (dari kelas ABC-XYZ)</span>
+                                </li>
+                               <li class="flex flex-col sm:flex-row sm:items-center mt-2 border-t border-slate-600 pt-3">
+                                    <span class="font-mono bg-slate-700 text-cyan-300 rounded px-2 py-1 mr-4 w-auto sm:w-52 text-left sm:text-right">MIN (Re-Order Point)</span>
+                                    <span class="font-mono text-xs">= SS + (Avg Use/Bulan &times; Avg LT/Bulan)</span>
+                               </li>
+                               <li class="flex flex-col sm:flex-row sm:items-center">
+                                    <span class="font-mono bg-slate-700 text-cyan-300 rounded px-2 py-1 mr-4 w-auto sm:w-52 text-left sm:text-right">MAX Stock</span>
+                                    <span class="font-mono text-xs">= MIN + Avg Use/Bulan</span>
+                               </li>
+                               <li class="flex flex-col sm:flex-row sm:items-center mt-2 border-t border-slate-600 pt-3">
+                                    <span class="font-mono bg-slate-700 text-cyan-300 rounded px-2 py-1 mr-4 w-auto sm:w-52 text-left sm:text-right">ROQ (Re-Order Qty)</span>
+                                    <span class="font-mono text-xs">= MAX Stock - Stock Aktual</span>
+                               </li>
+                         </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Message Area -->
+        <div id="status-message" class="text-center my-4 max-w-4xl mx-auto"></div>
+
+        <!-- Results Section (Hidden by default) -->
+        <div id="results-section" class="hidden w-full mx-auto">
+
+            <!-- BARU: Baris untuk Search dan Judul -->
+            <div class="flex justify-between items-center mb-2">
+                <!-- Search Input -->
+                <div class="relative">
+                    <input type="text" id="search-input" placeholder="Cari..." class="h-10 w-full sm:w-60 pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white text-sm">
+                    <svg class="w-5 h-5 absolute text-slate-500 top-1/2 left-3 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <!-- Judul Hasil -->
+                <h2 class="text-sm text-slate-400 whitespace-nowrap">Hasil Perhitungan (<span id="results-count">0</span>)</h2>
+            </div>
+
+            <!-- Tabel Hasil & Kontrol -->
+            <div class="futuristic-card overflow-hidden rounded-lg">
+                <!-- Baris Filter & Tombol di dalam Card -->
+                <div class="flex flex-col sm:flex-row items-center justify-start gap-3 w-full p-4 border-b border-slate-700">
+                    <!-- Manufacture Filter -->
+                    <div class="relative w-full sm:w-auto">
+                        <select id="manufacture-filter" class="h-10 w-full sm:w-44 pl-3 pr-10 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white appearance-none text-sm">
+                            <option value="">Semua Manufaktur</option>
+                            <option value="CHINA">CHINA</option>
+                            <option value="NON CHINA">NON CHINA</option>
+                        </select>
+                        <svg class="w-5 h-5 absolute text-slate-500 top-1/2 right-3 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                    <!-- Stock Status Filter -->
+                    <div class="relative w-full sm:w-auto">
+                        <select id="stock-status-filter" class="h-10 w-full sm:w-44 pl-3 pr-10 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white appearance-none text-sm">
+                            <option value="">Semua Status</option>
+                            <option value="Under Stock">Under Stock</option>
+                            <option value="Balance Stock">Balance Stock</option>
+                            <option value="Over Stock">Over Stock</option>
+                        </select>
+                        <svg class="w-5 h-5 absolute text-slate-500 top-1/2 right-3 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                    <!-- Level Movement Filter -->
+                    <div class="relative w-full sm:w-auto">
+                        <select id="level-movement-filter" class="h-10 w-full sm:w-44 pl-3 pr-10 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white appearance-none text-sm">
+                            <option value="">Semua Movement</option>
+                            <option value="Fast Moving">Fast Moving</option>
+                            <option value="Medium Moving">Medium Moving</option>
+                            <option value="Slow Moving">Slow Moving</option>
+                            <option value="Non Moving">Non Moving</option>
+                        </select>
+                        <svg class="w-5 h-5 absolute text-slate-500 top-1/2 right-3 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                    <!-- Spacer -->
+                    <div class="flex-grow"></div>
+                    <!-- Tombol Reset -->
+                    <button id="reset-btn" class="h-10 futuristic-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        Kalkulasi Baru
+                    </button>
+                    <!-- Tombol Download -->
+                    <button id="download-btn" class="h-10 futuristic-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Unduh Hasil
+                    </button>
+                    <!-- BARU: Tombol Unduh Non-Hitung -->
+                    <button id="download-rejected-btn" class="h-10 futuristic-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                        Unduh Non-Hitung
+                    </button>
+                     <!-- BARU: Tombol Simpan Sesi -->
+                    <button id="save-session-btn" class="h-10 secondary-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4-4-4 4z"></path></svg>
+                        Simpan Sesi
+                    </button>
+                     <!-- BARU: Tombol Toggle Dashboard -->
+                    <button id="toggle-dashboard-btn" class="h-10 secondary-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2a4 4 0 00-4-4H3V7h2a4 4 0 004-4V1h6v2a4 4 0 004 4h2v4h-2a4 4 0 00-4 4v2H9z"></path></svg>
+                        <span id="toggle-dashboard-text">Tampilkan Dashboard</span>
+                    </button>
+                    <!-- Tombol Publish -->
+                    <button id="publish-btn" class="h-10 futuristic-button text-white font-bold py-2 px-5 rounded-lg w-full sm:w-auto justify-center flex items-center text-sm hidden">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        Publish
+                    </button>
+                </div>
+
+                <!-- Dashboard KPI Section (Awalnya Hidden) -->
+                <div id="dashboard-section" class="p-4 border-b border-slate-700 hidden">
+                    <h3 class="text-xl font-bold text-white mb-4">Dashboard KPI</h3>
+
+                    <!-- Navigasi KPI -->
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                        <div class="flex rounded-lg bg-slate-800 p-1">
+                            <button id="kpi-nav-balance" class="kpi-nav-btn active text-sm py-2 px-4 rounded-md">KPI Min Max Balance</button>
+                            <button id="kpi-nav-movement" class="kpi-nav-btn text-sm py-2 px-4 rounded-md">KPI Level Movement</button>
+                        </div>
+
+                        <!-- Filter Group By -->
+                        <div class="relative w-full sm:w-auto">
+                            <label for="kpi-group-by-select" class="text-sm text-slate-400 mr-2">Tampilkan berdasarkan:</label>
+                            <select id="kpi-group-by-select" class="h-10 w-full sm:w-48 pl-3 pr-10 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white appearance-none text-sm">
+                                <option value="MATERIAL TYPE">Material Type</option>
+                                <option value="manufactureBrand">Manufacture Brand</option>
+                                <option value="brand">Brand</option>
+                            </select>
+                            <svg class="w-5 h-5 absolute text-slate-500 top-1/2 right-3 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+
+                    <!-- Kontainer Grafik & Tabel Ringkasan -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                        <!-- Kontainer Grafik -->
+                        <div class="bg-slate-900/50 p-4 rounded-lg">
+                            <canvas id="kpi-chart"></canvas>
+                        </div>
+                        <!-- Kontainer Tabel Ringkasan -->
+                        <div class="bg-slate-900/50 p-4 rounded-lg overflow-auto max-h-[400px]">
+                            <h4 id="kpi-summary-title" class="text-lg font-semibold text-white mb-3">Ringkasan KPI</h4>
+                            <div id="kpi-summary-table" class="table-container">
+                                <!-- Tabel akan di-render oleh JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- AKHIR DARI Dashboard KPI Section -->
+
+
+                <!-- Petunjuk Tepat di atas tabel -->
+                <!-- DIUBAH: Menambahkan petunjuk klik ganda header -->
+                <p class="text-sm text-slate-500 px-4 py-2">Klik kolom (Nilai Konsumsi, CV, SS, Min, Max) u/ detail. Klik ganda (ROQ, Level Mvmt, Status, <b class="text-cyan-300">Header Kolom</b>) u/ definisi.</p>
+
+                <div class="table-container overflow-auto max-h-[70vh]">
+                    <table class="min-w-full divide-y divide-slate-700">
+                        <!-- DIUBAH: Menambahkan ID ke thead -->
+                        <thead id="results-table-head" class="bg-slate-800 sticky top-0 z-10">
+                            <tr>
+                                <!-- DIUBAH: Menambahkan atribut data-definition -->
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-10">No.</th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-20" data-sort="plant" data-definition="plant">Plant <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-24" data-sort="material" data-definition="material">Material <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="manPartNo" data-definition="manPartNo">Manuf. Part No. <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider min-w-[200px]" data-sort="matDesc" data-definition="matDesc">Material Desc. <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-24" data-sort="brand" data-definition="brand">Brand <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-32" data-sort="manufactureBrand" data-definition="manufactureBrand">Manufacture Brand <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-20" data-sort="MATERIAL TYPE" data-definition="materialType">Type <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="annualConsumptionValue" data-definition="annualConsumptionValue">Nilai Konsumsi <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-16" data-sort="abcClass" data-definition="abcClass">ABC <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-16" data-sort="cv" data-definition="cv">CV <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-16" data-sort="xyzClass" data-definition="xyzClass">XYZ <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-20" data-sort="abcXyzClass" data-definition="abcXyzClass">Matrix <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="levelMovement" data-definition="levelMovement">Level Movement <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="Safety Stock" data-definition="safetyStock">Safety Stock <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="Order Point Min Stock" data-definition="minStock">Min (ROP) <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="Max Stock" data-definition="maxStock">Max Stock <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="roq" data-definition="roq">ROQ <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="actualStock" data-definition="actualStock">Stock Aktual <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-16" data-sort="uom" data-definition="uom">UOM <span class="sort-arrow"></span></th>
+                                <th class="px-2 py-2 text-center font-medium text-slate-400 uppercase tracking-wider w-28" data-sort="stockStatus" data-definition="stockStatus">Stock Status <span class="sort-arrow"></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-table-body" class="divide-y divide-slate-800"></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Pagination Controls -->
+            <div id="pagination-controls" class="flex justify-center items-center flex-wrap gap-2 mt-4 p-2"></div>
+
+            <!-- Definitions and Policy Section -->
+            <div id="definitions-section" class="mt-8 max-w-6xl mx-auto">
+                 <div class="futuristic-card p-6 rounded-lg">
+                       <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                           <h3 class="text-xl font-bold text-white">Kebijakan & Definisi Analisis</h3>
+                           <button id="learn-abc-xyz-btn" class="futuristic-button text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center">
+                               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                               Pelajari ABC-XYZ
+                           </button>
+                       </div>
+                       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                           <!-- Policy Table -->
+                           <div class="md:col-span-1">
+                               <h4 class="text-lg font-semibold text-white mb-3">Target Service Level (%)</h4>
+                               <div class="bg-slate-900/50 rounded-lg p-2">
+                                   <table class="w-full text-center policy-table">
+                                       <thead class="text-cyan-300">
+                                           <tr><th class="bg-transparent"></th><th class="font-bold">X</th><th class="font-bold">Y</th><th class="font-bold">Z</th></tr>
+                                       </thead>
+                                       <tbody>
+                                           <tr><td class="font-bold text-red-400">A</td><td class="bg-slate-800 rounded-tl-md">98%</td><td class="bg-slate-800">95%</td><td class="bg-slate-800 rounded-tr-md">90%</td></tr>
+                                           <tr><td class="font-bold text-orange-400">B</td><td class="bg-slate-800">95%</td><td class="bg-slate-800">90%</td><td class="bg-slate-800">85%</td></tr>
+                                           <tr><td class="font-bold text-yellow-400">C</td><td class="bg-slate-800 rounded-bl-md">90%</td><td class="bg-slate-800">85%</td><td class="bg-slate-800 rounded-br-md">80%</td></tr>
+                                       </tbody>
+                                   </table>
+                               </div>
+                           </div>
+                           <!-- Definitions -->
+                           <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div>
+                                    <h4 class="text-lg font-semibold text-white mb-3">Analisis ABC (Nilai)</h4>
+                                    <ul class="space-y-2">
+                                        <li class="flex items-start"><span class="abc-xyz-badge badge-a mr-3 mt-1">A</span><p class="text-slate-400 text-sm">Item bernilai tinggi (~80% total nilai).</p></li>
+                                        <li class="flex items-start"><span class="abc-xyz-badge badge-b mr-3 mt-1">B</span><p class="text-slate-400 text-sm">Item bernilai menengah (~15% total nilai).</p></li>
+                                        <li class="flex items-start"><span class="abc-xyz-badge badge-c mr-3 mt-1">C</span><p class="text-slate-400 text-sm">Item bernilai rendah (~5% total nilai).</p></li>
+                                    </ul>
+                                </div>
+                               <div>
+                                    <h4 class="text-lg font-semibold text-white mb-3">Analisis XYZ (Volatilitas)</h4>
+                                    <ul class="space-y-2">
+                                        <li class="flex items-start"><span class="abc-xyz-badge badge-x mr-3 mt-1">X</span><p class="text-slate-400 text-sm">Permintaan stabil & mudah diprediksi.</p></li>
+                                        <li class="flex items-start"><span class="abc-xyz-badge badge-y mr-3 mt-1">Y</span><p class="text-slate-400 text-sm">Permintaan bervariasi.</p></li>
+                                        <li class="flex items-start"><span class="abc-xyz-badge badge-z mr-3 mt-1">Z</span><p class="text-slate-400 text-sm">Permintaan tidak teratur & sulit diprediksi.</p></li>
+                                    </ul>
+                                </div>
+                           </div>
+                       </div>
+                 </div>
+            </div>
+
+        </div>
+
+         <footer class="text-center text-slate-600 mt-12">
+             <p id="last-update" class="text-sm mb-2 text-slate-500"></p> <!-- Konten diisi oleh JavaScript -->
+             <p>&copy; <span id="current-year"></span> Logistic BSS_Probabilistic Stock Calculator. All rights reserved</p>
+         </footer>
+    </div>
+
+    <!-- Details Modal -->
+    <div id="details-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="futuristic-card w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 id="modal-title" class="text-xl font-bold text-white">Detail Perhitungan</h3>
+                <button id="modal-close-btn" class="p-1 rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto" id="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- ABC-XYZ Info Modal -->
+    <div id="abc-xyz-info-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="futuristic-card w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 class="text-xl font-bold text-white">Memahami Analisis ABC & XYZ</h3>
+                <button id="abc-xyz-modal-close-btn" class="p-1 rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto text-slate-300 space-y-6">
+                <div>
+                    <h4 class="text-lg font-semibold text-white mb-2">Analisis ABC (Berdasarkan Nilai Konsumsi)</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <p class="font-semibold text-red-400">Kelas A (~80% total nilai):</p>
+                            <p class="text-sm">Kelompok item paling berharga. Meskipun jumlahnya sedikit, nilainya sangat tinggi. Membutuhkan pengawasan super ketat.</p>
+                            <p class="text-sm mt-1 pl-4 border-l-2 border-slate-600"><b>Contoh:</b> Engine, transmisi, komponen hidrolik mahal.</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-orange-400">Kelas B (~15% total nilai):</p>
+                            <p class="text-sm">Kelompok item dengan nilai menengah. Pengawasan berkala sudah cukup.</p>
+                            <p class="text-sm mt-1 pl-4 border-l-2 border-slate-600"><b>Contoh:</b> Filter, ban, komponen elektrik.</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-yellow-400">Kelas C (~5% total nilai):</p>
+                            <p class="text-sm">Kelompok item bernilai rendah. Jumlahnya banyak tapi nilainya kecil. Manajemennya bisa disederhanakan.</p>
+                            <p class="text-sm mt-1 pl-4 border-l-2 border-slate-600"><b>Contoh:</b> Baut, mur, sekring, selang kecil.</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="border-t border-slate-700 pt-6">
+                    <h4 class="text-lg font-semibold text-white mb-2">Analisis XYZ (Berdasarkan Pola Permintaan)</h4>
+                     <div class="space-y-4">
+                         <div>
+                            <p class="font-semibold text-green-400">Kelas X (Stabil):</p>
+                            <p class="text-sm">Permintaan untuk item ini sangat konstan dan mudah diramalkan. Anda bisa tahu kira-kira berapa yang akan terpakai setiap bulannya.</p>
+                            <p class="text-sm mt-1 pl-4 border-l-2 border-slate-600"><b>Contoh:</b> Oli untuk servis rutin, filter yang diganti secara terjadwal.</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-blue-400">Kelas Y (Bervariasi):</p>
+                            <p class="text-sm">Permintaan untuk item ini kadang naik, kadang turun dan agak sulit ditebak, namun polanya masih ada.</p>
+                            <p class="text-sm mt-1 pl-4 border-l-2 border-slate-600"><b>Contoh:</b> Ban, komponen rem yang pemakaiannya tergantung kondisi lapangan.</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-purple-400">Kelas Z (Sangat Tidak Teratur):</p>
+                            <p class="text-sm">Permintaan untuk item ini sangat sporadis dan acak. Bisa jadi berbulan-bulan tidak ada yang pakai, lalu tiba-tiba ada permintaan besar. Sangat sulit diramalkan.</p>
+                            <p class="text-sm mt-1 pl-4 border-l-2 border-slate-600"><b>Contoh:</b> Komponen bodi (akibat kecelakaan), suku cadang yang jarang sekali rusak.</p>
+                        </div>
+                     </div>
+                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Publish Modal -->
+    <div id="publish-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="futuristic-card w-full max-w-2xl rounded-lg">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 id="publish-modal-title" class="text-xl font-bold text-white">Publikasikan Hasil</h3>
+                <button id="publish-modal-close-btn" class="p-1 rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto text-slate-300 space-y-4">
+                <div>
+                    <h4 class="font-semibold text-white mb-2">Link Web (URL)</h4>
+                    <div class="flex gap-2">
+                        <input id="publish-url-link" type="text" readonly class="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm text-slate-400" value="">
+                        <button id="copy-url-btn" class="futuristic-button text-white font-bold py-2 px-4 rounded-lg text-sm">
+                            Copy
+                        </button>
+                    </div>
+                    <span id="copy-url-feedback" class="text-xs text-cyan-400 hidden mt-1">Tersalin ke clipboard!</span>
+                </div>
+
+                <div class="border-t border-slate-700 pt-4">
+                    <h4 class="font-semibold text-white mb-2">Data Hasil Perhitungan (Ringkasan)</h4>
+                    <div id="publish-summary-data" class="table-container max-h-60 overflow-auto bg-slate-900/50 p-2 rounded-lg">
+                        <!-- Summary data will appear here -->
+                        <p class="text-sm text-slate-500">Data ringkasan akan muncul di sini...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- BARU: Save Session Modal -->
+    <div id="save-session-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="futuristic-card w-full max-w-lg rounded-lg">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 id="save-session-modal-title" class="text-xl font-bold text-white">Simpan Sesi Perhitungan</h3>
+                <button id="save-session-modal-close-btn" class="p-1 rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto text-slate-300 space-y-4">
+                <div>
+                    <label for="session-name-input" class="block text-sm font-medium text-slate-400 mb-2">Nama Sesi</label>
+                    <input id="session-name-input" type="text" class="h-10 w-full pl-3 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white" placeholder="Misal: Analisis Q4 2025">
+                    <span id="save-session-feedback" class="text-xs text-cyan-400 hidden mt-1"></span>
+                </div>
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-700">
+                     <button id="save-session-cancel-btn" class="secondary-button text-white font-bold py-2 px-5 rounded-lg text-sm">
+                        Batal
+                    </button>
+                    <button id="save-session-confirm-btn" class="futuristic-button text-white font-bold py-2 px-5 rounded-lg text-sm">
+                        Simpan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Calculation Progress Modal -->
+    <div id="progress-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="futuristic-card w-full max-w-md rounded-lg p-8 text-center">
+            <h3 class="text-xl font-bold text-white mb-2">Menganalisis Data...</h3>
+            <p id="progress-message" class="text-slate-400 mb-6">Memulai proses...</p>
+            <!-- Loader BARU (menggantikan progress bar) -->
+            <div class="relative w-32 h-32 mx-auto mb-6">
+                <svg class="w-full h-full" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle class="text-slate-700" stroke-width="8" stroke="currentColor" fill="transparent" r="42" cx="50" cy="50" />
+                    <circle id="progress-ring-circle" class="text-cyan-400" stroke-width="8" stroke-linecap="round" stroke="currentColor" fill="transparent" r="42" cx="50" cy="50"
+                        stroke-dasharray="264"
+                        stroke-dashoffset="264"
+                        transform="rotate(-90 50 50)" />
+                </svg>
+                <span id="progress-percent" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-bold text-white">0%</span>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+    // --- DIHAPUS: Definisi window.buffer dihapus ---
+
+    // --- BARU: Helper functions untuk konversi Base64 <-> ArrayBuffer ---
+    // Diperlukan karena localStorage hanya menyimpan string
+    function bufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    }
+
+    function base64ToBuffer(base64) {
+        if (!base64) return null;
+        try {
+            const binary_string = window.atob(base64);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+            }
+            return bytes.buffer;
+        } catch (e) {
+            console.error("Gagal mengurai Base64 dari localStorage:", e);
+            localStorage.removeItem('giFileBase64'); // Hapus data korup
+            localStorage.removeItem('ltFileBase64');
+            localStorage.removeItem('stockFileBase64');
+            // BARU: Hapus nama file korup juga
+            localStorage.removeItem('giFileName');
+            localStorage.removeItem('ltFileName');
+            localStorage.removeItem('stockFileName');
+            return null;
+        }
+    }
+
+    // --- BARU: Kelas Helper IndexedDB ---
+    const HistoryDB = (() => {
+        let db;
+        const DB_NAME = 'MinMaxHistoryDB';
+        const STORE_NAME = 'sessions';
+
+        async function init() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                    }
+                };
+
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+
+                request.onerror = (event) => {
+                    console.error("IndexedDB error:", event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        async function saveSession(sessionData) {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject("DB not initialized.");
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.add(sessionData);
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        async function getSessions() {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject("DB not initialized.");
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.getAll();
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        async function getSession(id) {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject("DB not initialized.");
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.get(id);
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        async function deleteSession(id) {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject("DB not initialized.");
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.delete(id);
+
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        return { init, saveSession, getSessions, getSession, deleteSession };
+    })();
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // --- DOM Elements ---
+        const giFileInput = document.getElementById('gi-file');
+        const ltFileInput = document.getElementById('lt-file');
+        const stockFileInput = document.getElementById('stock-file');
+        const giFileLabel = document.getElementById('gi-file-label');
+        const ltFileLabel = document.getElementById('lt-file-label');
+        const stockFileLabel = document.getElementById('stock-file-label');
+        const calculateBtn = document.getElementById('calculate-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const downloadRejectedBtn = document.getElementById('download-rejected-btn'); // BARU
+        const resetBtn = document.getElementById('reset-btn');
+        const setupSection = document.getElementById('setup-section');
+        const resultsSection = document.getElementById('results-section');
+        const resultsTableBody = document.getElementById('results-table-body');
+        const resultsTableHead = document.getElementById('results-table-head'); // DIUBAH
+        const statusMessage = document.getElementById('status-message');
+        const detailsModal = document.getElementById('details-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const searchInput = document.getElementById('search-input');
+        const resultsCount = document.getElementById('results-count');
+        const manufactureFilter = document.getElementById('manufacture-filter');
+        const stockStatusFilter = document.getElementById('stock-status-filter');
+        const levelMovementFilter = document.getElementById('level-movement-filter');
+        const paginationControls = document.getElementById('pagination-controls');
+        const learnAbcXyzBtn = document.getElementById('learn-abc-xyz-btn');
+        const abcXyzInfoModal = document.getElementById('abc-xyz-info-modal');
+        const abcXyzModalCloseBtn = document.getElementById('abc-xyz-modal-close-btn');
+        const progressModal = document.getElementById('progress-modal');
+        const progressRingCircle = document.getElementById('progress-ring-circle');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressMessage = document.getElementById('progress-message');
+
+        // BARU: Elemen Histori
+        const historySelect = document.getElementById('history-select');
+        const loadSessionBtn = document.getElementById('load-session-btn');
+        const deleteSessionBtn = document.getElementById('delete-session-btn');
+        const saveSessionBtn = document.getElementById('save-session-btn');
+        const saveSessionModal = document.getElementById('save-session-modal');
+        const saveSessionModalCloseBtn = document.getElementById('save-session-modal-close-btn');
+        const saveSessionCancelBtn = document.getElementById('save-session-cancel-btn');
+        const saveSessionConfirmBtn = document.getElementById('save-session-confirm-btn');
+        const sessionNameInput = document.getElementById('session-name-input');
+        const saveSessionFeedback = document.getElementById('save-session-feedback');
+
+        // Elemen Dashboard
+        const dashboardSection = document.getElementById('dashboard-section');
+        const kpiNavBalanceBtn = document.getElementById('kpi-nav-balance');
+        const kpiNavMovementBtn = document.getElementById('kpi-nav-movement');
+        const kpiGroupBySelect = document.getElementById('kpi-group-by-select');
+        const kpiChartCanvas = document.getElementById('kpi-chart');
+        const kpiSummaryTitle = document.getElementById('kpi-summary-title');
+        const kpiSummaryTableContainer = document.getElementById('kpi-summary-table');
+        const toggleDashboardBtn = document.getElementById('toggle-dashboard-btn');
+        const toggleDashboardText = document.getElementById('toggle-dashboard-text');
+
+        // Elemen Modal Publish
+        const publishBtn = document.getElementById('publish-btn');
+        const publishModal = document.getElementById('publish-modal');
+        const publishModalCloseBtn = document.getElementById('publish-modal-close-btn');
+        const publishUrlLink = document.getElementById('publish-url-link');
+        const copyUrlBtn = document.getElementById('copy-url-btn');
+        const copyUrlFeedback = document.getElementById('copy-url-feedback');
+        const publishSummaryData = document.getElementById('publish-summary-data');
+
+        // Atur tahun di footer
+        const currentYearEl = document.getElementById('current-year');
+        if (currentYearEl) {
+            currentYearEl.textContent = new Date().getFullYear();
+        }
+
+        // Atur timestamp versi dinamis
+        const lastUpdateEl = document.getElementById('last-update');
+        if (lastUpdateEl) {
+            const now = new Date();
+            const options = {
+                day: 'numeric', month: 'long', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta', hour12: false
+            };
+            let timestamp = new Intl.DateTimeFormat('id-ID', options).format(now).replace('.', ':');
+            lastUpdateEl.textContent = `Last Version: ${timestamp} WIB`;
+        }
+
+        // --- State variables ---
+        // DIUBAH: State buffer diinisialisasi ke null. Akan diisi dari localStorage.
+        let giFileBuffer = null;
+        let ltFileBuffer = null;
+        let stockFileBuffer = null;
+        
+        let calculationResults = [];
+        let rejectedMaterialsData = []; // BARU
+        let filteredAndSortedResults = [];
+        let currentSort = { key: 'annualConsumptionValue', direction: 'desc' };
+        let currentFilter = '';
+        let manufactureBrandFilter = '';
+        let stockStatusFilterValue = '';
+        let levelMovementFilterValue = '';
+        let currentPage = 1;
+        const rowsPerPage = 100;
+        let isDashboardVisible = false; // State untuk visibilitas dashboard
+
+        // State Dashboard
+        let currentKpiType = 'balance';
+        let currentKpiGroupBy = 'MATERIAL TYPE';
+        let kpiChartInstance = null;
+
+        // Konstanta Warna KPI
+        const KPI_COLORS = {
+            balance: {
+                'Under Stock': '#facc15', 'Balance Stock': '#4ade80', 'Over Stock': '#f87171',
+            },
+            movement: {
+                'Fast Moving': '#22d3ee', 'Medium Moving': '#a78bfa', 'Slow Moving': '#f8b44e', 'Non Moving': '#64748b',
+            }
+        };
+
+        // DIUBAH: Menambahkan Definisi Kolom Header
+        const headerDefinitions = {
+            plant: "Kode unik untuk lokasi (pabrik/gudang) tempat material disimpan.",
+            material: "Kode unik untuk setiap item material dalam sistem.",
+            manPartNo: "Nomor komponen dari pabrikan asli (jika berbeda dari kode material internal).",
+            matDesc: "Deskripsi atau nama lengkap dari item material.",
+            brand: "Merek dagang dari item material (diekstrak dari deskripsi).",
+            manufactureBrand: "Klasifikasi merek berdasarkan asal (CHINA / NON CHINA).",
+            materialType: "Klasifikasi material berdasarkan digit pertama kode material (misal: SPRT untuk Sparepart).",
+            annualConsumptionValue: "Total nilai pemakaian material selama satu tahun terakhir (Total Qty x Harga Rata-rata).",
+            abcClass: "Klasifikasi material berdasarkan kontribusi nilai tahunan (A=tinggi, B=menengah, C=rendah).",
+            cv: "Koefisien Variasi (Coefficient of Variation). Ukuran volatilitas permintaan bulanan (StdDev / Rata-rata).",
+            xyzClass: "Klasifikasi material berdasarkan volatilitas permintaan (X=stabil, Y=bervariasi, Z=tidak teratur).",
+            abcXyzClass: "Kombinasi klasifikasi ABC dan XYZ untuk strategi manajemen stok.",
+            levelMovement: "Klasifikasi berdasarkan frekuensi transaksi pemakaian dalam setahun (Fast, Medium, Slow, Non Moving).",
+            safetyStock: "Stok pengaman untuk melindungi dari ketidakpastian permintaan dan lead time. Dihitung berdasarkan Service Level, variabilitas demand & LT.",
+            minStock: "Titik Pemesanan Kembali (Re-Order Point/ROP). Level stok minimum sebelum pesanan baru harus dilakukan. (Safety Stock + Rata-rata Pemakaian selama Lead Time).",
+            maxStock: "Level stok maksimum yang ditargetkan setelah penerimaan pesanan. (Min Stock + Rata-rata Pemakaian Bulanan).",
+            roq: "Kuantitas Pemesanan Kembali (Re-Order Quantity). Jumlah yang disarankan untuk dipesan agar stok mencapai Max. (Max Stock - Stock Aktual, min 0).",
+            actualStock: "Jumlah stok fisik 'Unrestricted' saat ini berdasarkan data MB52.",
+            uom: "Satuan Ukur (Unit of Measure) dasar untuk material (misal: PC, KG, LTR).",
+            stockStatus: "Status stok saat ini dibandingkan dengan level Min dan Max (Under Stock, Balance Stock, Over Stock)."
+        };
+
+
+        // --- Loader Progress Ring ---
+        let progressRingRadius = progressRingCircle ? progressRingCircle.r.baseVal.value : 0;
+        const progressRingCircumference = progressRingRadius * 2 * Math.PI;
+
+        function setProgressRing(percent) {
+            if (!progressRingCircle) return;
+            const offset = progressRingCircumference - (percent / 100) * progressRingCircumference;
+            progressRingCircle.style.strokeDashoffset = offset;
+            if (progressPercent) progressPercent.textContent = `${percent}%`;
+        }
+        if (progressRingCircle) {
+            progressRingCircle.style.strokeDasharray = `${progressRingCircumference} ${progressRingCircumference}`;
+            progressRingCircle.style.strokeDashoffset = progressRingCircumference;
+        }
+
+        // --- WEB WORKER IMPLEMENTATION ---
+        let calculationWorker;
+         const workerScript = `
+            self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+
+            const parseCustomDate = (dateString) => {
+                if (!dateString || typeof dateString !== 'string') return null;
+                const parts = dateString.match(/(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})/);
+                if (!parts) {
+                    try { const d = new Date(dateString); return isNaN(d) ? null : d; } catch(e) { return null; }
+                }
+
+                let day, month;
+                const part1 = parseInt(parts[1], 10);
+                const part2 = parseInt(parts[2], 10);
+                let year = parseInt(parts[3], 10);
+                if (year < 100) year += 2000; 
+
+                if (part1 > 12) {
+                    day = part1; month = part2 - 1;
+                } else if (part2 > 12) {
+                    month = part1 - 1; day = part2;
+                } else {
+                    month = part1 - 1; day = part2;
+                }
+
+                return new Date(Date.UTC(year, month, day));
+            };
+
+            const removeOutliers = (data, key = null) => {
+                const values = key ? data.map(d => d[key]) : data;
+                if (values.length < 4) return data;
+
+                const sorted = [...values].sort((a, b) => a - b);
+                const q1 = sorted[Math.floor(sorted.length * 0.25)];
+                const q3 = sorted[Math.floor(sorted.length * 0.75)];
+                const iqr = q3 - q1;
+                const lower = q1 - 1.5 * iqr;
+                const upper = q3 + 1.5 * iqr;
+
+                if (key) {
+                    return data.filter(d => d[key] >= lower && d[key] <= upper);
+                }
+                return data.filter(d => d >= lower && d <= upper);
+            };
+
+            const calculateStdDev = (arr) => {
+                if (arr.length < 2) return 0;
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                const variance = arr.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (arr.length - 1);
+                return Math.sqrt(variance);
+            };
+
+            const getZScore = (serviceLevel) => {
+                const zScores = { 0.80: 0.84, 0.85: 1.04, 0.90: 1.28, 0.95: 1.65, 0.98: 2.05, 0.99: 2.33 };
+                return zScores[serviceLevel] || 0;
+            };
+
+            self.onmessage = function(e) {
+                // BARU: Tambahkan array untuk material yang ditolak
+                let rejectedMaterials = [];
+                const { giFileBuffer, ltFileBuffer, stockFileBuffer, masterData } = e.data;
+                const { serviceLevelPolicy } = masterData;
+
+                try {
+                    self.postMessage({ status: 'progress', value: 10, message: 'Membaca file GI (MB51)...' });
+                    const giWorkbook = self.XLSX.read(giFileBuffer, { type: 'array' });
+                    const giData = self.XLSX.utils.sheet_to_json(giWorkbook.Sheets[giWorkbook.SheetNames[0]], { raw: false, dateNF:'dd/mm/yyyy' });
+
+                    self.postMessage({ status: 'progress', value: 25, message: 'Membaca file LT (ZMMR004)...' });
+                    const ltWorkbook = self.XLSX.read(ltFileBuffer, { type: 'array' });
+                    const ltData = self.XLSX.utils.sheet_to_json(ltWorkbook.Sheets[ltWorkbook.SheetNames[0]], { raw: false, dateNF:'dd/mm/yyyy' });
+
+                    self.postMessage({ status: 'progress', value: 35, message: 'Membaca file Stok (MB52_SOH)...' });
+                    const stockWorkbook = self.XLSX.read(stockFileBuffer, { type: 'array' });
+                    const stockData = self.XLSX.utils.sheet_to_json(stockWorkbook.Sheets[stockWorkbook.SheetNames[0]], { raw: false });
+
+                    self.postMessage({ status: 'progress', value: 40, message: 'Memproses data pemakaian...' });
+
+                    const giPossibleKeys = {
+                        date: ['Posting Date', 'Document Date', 'Date'],
+                        plant: ['Plant', 'Plnt'],
+                        material: ['Material', 'Material Number'],
+                        qty: ['Qty in unit of entry', 'Quantity', 'Qty'],
+                        amount: ['Amt.in Loc.Cur.', 'Amount in LC', 'Amount'],
+                        matDesc: ['Material Description', 'Description'],
+                        manPartNo: ['Manufacturer Part No.', 'Manuf. Part No.', 'MPN']
+                    };
+
+                    const ltPossibleKeys = {
+                        plant: ['Plant', 'Plnt'],
+                        material: ['Material', 'Material Number'],
+                        poDate: ['PO Date', 'Purchase Order Date', 'PO Creation Date', 'Document Date'],
+                        grDate: ['GR Doc. Date', 'GR Posting Date', 'Posting Date'],
+                        poNumber: ['PO Number', 'Purchase Order', 'PO No.'],
+                        grNumber: ['GR Number', 'GR Document', 'GR No.']
+                    };
+
+                    // BARU: Tambahkan pencarian deskripsi di file stok
+                    const stockPossibleKeys = {
+                        material: ['Material', 'Material Number'],
+                        plant: ['Plant', 'Plnt'],
+                        stock: ['Unrestricted', 'Stock', 'Qty'],
+                        uom: ['Base Unit of Measure', 'BUn', 'UoM'],
+                        matDesc: ['Material Description', 'Description'],
+                        manPartNo: ['Manufacturer Part No.', 'Manuf. Part No.', 'MPN']
+                    };
+
+                    const firstGiRow = giData[0] || {};
+                    const actualGiKeys = {
+                        date: giPossibleKeys.date.find(k => k in firstGiRow),
+                        plant: giPossibleKeys.plant.find(k => k in firstGiRow),
+                        material: giPossibleKeys.material.find(k => k in firstGiRow),
+                        qty: giPossibleKeys.qty.find(k => k in firstGiRow),
+                        amount: giPossibleKeys.amount.find(k => k in firstGiRow),
+                        matDesc: giPossibleKeys.matDesc.find(k => k in firstGiRow),
+                        manPartNo: giPossibleKeys.manPartNo.find(k => k in firstGiRow)
+                    };
+
+                    const firstLtRow = ltData[0] || {};
+                    const actualLtKeys = {
+                          plant: ltPossibleKeys.plant.find(k => k in firstLtRow),
+                          material: ltPossibleKeys.material.find(k => k in firstLtRow),
+                          poDate: ltPossibleKeys.poDate.find(k => k in firstLtRow),
+                          grDate: ltPossibleKeys.grDate.find(k => k in firstLtRow),
+                          poNumber: ltPossibleKeys.poNumber.find(k => k in firstLtRow),
+                          grNumber: ltPossibleKeys.grNumber.find(k => k in firstLtRow)
+                    };
+
+                    const firstStockRow = stockData[0] || {};
+                    const actualStockKeys = {
+                          material: stockPossibleKeys.material.find(k => k in firstStockRow),
+                          plant: stockPossibleKeys.plant.find(k => k in firstStockRow),
+                          stock: stockPossibleKeys.stock.find(k => k in firstStockRow),
+                          uom: stockPossibleKeys.uom.find(k => k in firstStockRow),
+                          matDesc: stockPossibleKeys.matDesc.find(k => k in firstStockRow), // BARU
+                          manPartNo: stockPossibleKeys.manPartNo.find(k => k in firstStockRow) // BARU
+                    };
+
+                    const usageData = {};
+                    const oneYearAgo = new Date(new Date().setFullYear(new Date().getFullYear() - 1));
+
+                    giData.forEach(row => {
+                        const date = parseCustomDate(row[actualGiKeys.date]);
+
+                        if (date && date >= oneYearAgo) {
+                            const plant = String(row[actualGiKeys.plant] || '').trim();
+                            const material = String(parseInt(row[actualGiKeys.material], 10));
+                            const qty = Math.abs(parseFloat(row[actualGiKeys.qty] || 0));
+                            const amount = Math.abs(parseFloat(String(row[actualGiKeys.amount] || '0').replace(/,/g, '')));
+
+                            if (!plant || !material || isNaN(qty) || qty === 0) return;
+
+                            const key = plant + '-' + material;
+                            if (!usageData[key]) {
+                                usageData[key] = {
+                                    plant, material, totalUsage: 0, totalAmount: 0,
+                                    monthlyUsages: {}, transactionCount: 0,
+                                    matDesc: row[actualGiKeys.matDesc] || '',
+                                    manPartNo: row[actualGiKeys.manPartNo] || ''
+                                };
+                            }
+                            usageData[key].totalUsage += qty;
+                            usageData[key].totalAmount += amount;
+                            usageData[key].transactionCount++;
+                            const monthKey = date.toISOString().substring(0, 7);
+                            usageData[key].monthlyUsages[monthKey] = (usageData[key].monthlyUsages[monthKey] || 0) + qty;
+                        }
+                    });
+
+                    self.postMessage({ status: 'progress', value: 50, message: 'Memetakan data stok (UOM)...' });
+                    const stockMap = new Map();
+                    stockData.forEach(row => {
+                        const plant = String(row[actualStockKeys.plant] || '').trim();
+                        const material = String(parseInt(row[actualStockKeys.material], 10));
+                        const stock = parseFloat(String(row[actualStockKeys.stock] || '0').replace(/,/g, ''));
+                        const uom = String(row[actualStockKeys.uom] || 'N/A');
+                        // BARU: Ambil info tambahan dari file stok
+                        const matDesc = String(row[actualStockKeys.matDesc] || 'N/A');
+                        const manPartNo = String(row[actualStockKeys.manPartNo] || 'N/A');
+
+                        if (plant && material && !isNaN(stock)) {
+                            const key = plant + '-' + material;
+                            const currentData = stockMap.get(key) || { stock: 0, uom: 'N/A', matDesc: 'N/A', manPartNo: 'N/A' };
+
+                            // BARU: Simpan info tambahan ke stockMap
+                            stockMap.set(key, {
+                                stock: currentData.stock + stock,
+                                uom: (currentData.uom === 'N/A' && uom !== 'N/A') ? uom : currentData.uom,
+                                matDesc: (currentData.matDesc === 'N/A' && matDesc !== 'N/A') ? matDesc : currentData.matDesc,
+                                manPartNo: (currentData.manPartNo === 'N/A' && manPartNo !== 'N/A') ? manPartNo : currentData.manPartNo
+                            });
+                        }
+                    });
+
+                    self.postMessage({ status: 'progress', value: 65, message: 'Memproses data lead time...' });
+                    const leadtimeData = {};
+                    ltData.forEach(row => {
+                        const plant = String(row[actualLtKeys.plant] || '').trim();
+                        const material = String(parseInt(row[actualLtKeys.material], 10));
+                        if (!plant || !material) return;
+
+                        const poDate = parseCustomDate(row[actualLtKeys.poDate]);
+                        const grDate = parseCustomDate(row[actualLtKeys.grDate]);
+                        if (poDate && grDate && poDate < grDate) {
+                            const key = plant + '-' + material;
+                            if (!leadtimeData[key]) {
+                                leadtimeData[key] = { transactions: [] };
+                            }
+                            const ltDays = (grDate - poDate) / (1000 * 60 * 60 * 24);
+                            const transaction = {
+                                poNumber: row[actualLtKeys.poNumber] || 'N/A',
+                                poDate: row[actualLtKeys.poDate] || 'N/A',
+                                grNumber: row[actualLtKeys.grNumber] || 'N/A',
+                                grDate: row[actualLtKeys.grDate] || 'N/A',
+                                ltDays: ltDays
+                            };
+                            leadtimeData[key].transactions.push(transaction);
+                        }
+                    });
+
+                    self.postMessage({ status: 'progress', value: 80, message: 'Menghitung statistik awal...' });
+                    
+                    // BARU: Ubah dari .map ke .forEach untuk memisahkan hasil
+                    let preliminaryResults = [];
+                    const usageKeys = Object.keys(usageData);
+
+                    usageKeys.forEach(key => {
+                        const usage = usageData[key];
+                        const leadtime = leadtimeData[key];
+                        let rejectionReason = null; // BARU
+
+                        // --- (1) Hitung Brand/Type (perlu untuk kedua report) ---
+                        const firstDigit = String(usage.material).charAt(0);
+                        usage['MATERIAL TYPE'] = masterData.materialTypeMaster[firstDigit] || 'Unknown';
+
+                        // --- (2) Cek Rejection (LOGIKA DIUBAH) ---
+                        const monthlyUsageValues = Object.values(usage.monthlyUsages);
+                        
+                        // Cek 1: HARUS punya > 1 transaksi GI (Sesuai permintaan Anda)
+                        if (usage.transactionCount < 2) {
+                            rejectionReason = "Data GI (MB51) < 2 transaksi.";
+                        
+                        // Cek 2: JIKA ADA data LT, cek outliernya
+                        } else if (leadtime && leadtime.transactions.length > 0) {
+                            const filteredTransactions = removeOutliers(leadtime.transactions, 'ltDays');
+                            if (filteredTransactions.length < 1) {
+                                rejectionReason = "Data LT < 1 transaksi setelah outlier dibersihkan.";
+                            }
+                        
+                        // Cek 3: JIKA TIDAK ADA data LT, cek outlier GI
+                        } else {
+                            const filteredMonthlyUsage = removeOutliers(monthlyUsageValues);
+                            if (filteredMonthlyUsage.length < 2) {
+                                rejectionReason = "Data GI < 2 bulan setelah outlier dibersihkan.";
+                            }
+                        }
+                        // Perhatikan: "Tidak ada data LT" tidak lagi menjadi alasan penolakan.
+
+                        // --- (3) Add to correct list ---
+                        if (rejectionReason) {
+                            // --- Blok ini untuk material yang BENAR-BENAR GAGAL ---
+                            const descUpper = String(usage.matDesc || '').toUpperCase();
+                            let brand = 'OTHER';
+                            
+                            // 1. Cek daftar brand yang diketahui (DIUBAH: \b dihapus agar lebih fleksibel)
+                            for (const b of masterData.allKnownBrands) {
+                                if (new RegExp(b).test(descUpper)) { brand = b; break; }
+                            }
+
+                            // 2. JIKA brand masih 'OTHER', ambil kata terakhir (LOGIKA DIPERBAIKI)
+                            if (brand === 'OTHER' && descUpper.trim()) {
+                                const words = descUpper.trim().split(' ');
+                                let lastWord = words[words.length - 1];
+                                
+                                // Bersihkan punctuation umum di akhir
+                                lastWord = lastWord.replace(/[\(\)\[\].,;:]+$/, '');
+
+                                // Hanya set jika kata terakhir BUKAN angka murni dan lebih panjang dari 1 huruf (atau A/I)
+                                if (lastWord && isNaN(lastWord) && (lastWord.length > 1 || ['A', 'I'].includes(lastWord))) {
+                                    brand = lastWord;
+                                }
+                            }
+
+                            const manufactureBrand = masterData.chinaBrands.includes(brand) ? 'CHINA' : 'NON CHINA';
+
+                            rejectedMaterials.push({
+                                'PLANT': usage.plant,
+                                'Code Material': usage.material,
+                                'Manufacturer Part No.': usage.manPartNo || 'N/A',
+                                'Material Description': usage.matDesc || 'N/A',
+                                'Brand Manufacture': manufactureBrand, // BARU
+                                'Brand': brand, // BARU
+                                'MATERIAL TYPE': usage['MATERIAL TYPE'],
+                                'Reason': rejectionReason
+                            });
+                        } else {
+                            // --- (4) Proceed with calculation (LOGIKA DIUBAH) ---
+                            // Item di sini PASTI memiliki GI >= 2 transaksi.
+                            
+                            // Hitung Statistik GI (karena kita tahu datanya valid)
+                            const filteredMonthlyUsage = removeOutliers(Object.values(usage.monthlyUsages));
+                            const usageAvgMonth = usage.totalUsage / 12;
+                            const stdDevDemand = calculateStdDev(filteredMonthlyUsage);
+                            const avgPrice = usage.totalUsage > 0 ? usage.totalAmount / usage.totalUsage : 0;
+                            const annualConsumptionValue = usage.totalUsage * avgPrice;
+                            const cv = (usageAvgMonth > 0) ? stdDevDemand / usageAvgMonth : 0;
+
+                            // Hitung Statistik LT (LOGIKA BARU)
+                            let leadtimeAvgDays, stdDevLT, rawLeadTimeTransactions;
+
+                            if (!leadtime || leadtime.transactions.length < 1) {
+                                // --- KASUS 1: TIDAK ADA DATA LT (Gunakan Default 7 Hari) ---
+                                // Ini sesuai permintaan: GI >= 2 TAPI LT tidak ada
+                                leadtimeAvgDays = 7;
+                                stdDevLT = 0; // Default ke 0 karena tidak ada variasi
+                                rawLeadTimeTransactions = [{ poNumber: 'N/A', poDate: 'N/A', grNumber: 'N/A', grDate: 'N/A', ltDays: 7, isDefault: true }];
+
+                            } else {
+                                // --- KASUS 2: ADA DATA LT (Proses Normal) ---
+                                // Kita tahu data ini lolos cek outlier dari blok (2)
+                                const filteredTransactions = removeOutliers(leadtime.transactions, 'ltDays');
+                                const filteredLeadtimes = filteredTransactions.map(t => t.ltDays);
+                                
+                                leadtimeAvgDays = filteredLeadtimes.reduce((a, b) => a + b, 0) / filteredLeadtimes.length;
+                                stdDevLT = calculateStdDev(filteredLeadtimes);
+                                rawLeadTimeTransactions = filteredTransactions;
+                            }
+                            
+                            preliminaryResults.push({ 
+                                ...usage, 
+                                ...leadtime, // leadtime bisa jadi undefined, tapi tidak masalah
+                                annualConsumptionValue, 
+                                avgPrice, 
+                                cv, 
+                                usageAvgMonth, 
+                                stdDevDemand, 
+                                leadtimeAvgDays, // DIJAMIN ADA (default 7 atau kalkulasi)
+                                stdDevLT, // DIJAMIN ADA (default 0 atau kalkulasi)
+                                rawLeadTimeTransactions, // DIJAMIN ADA (default mock atau kalkulasi)
+                                fullMonthlyUsages: usage.monthlyUsages,
+                                rawMonthlyUsages: filteredMonthlyUsage 
+                            });
+                        }
+                    }); // Akhir dari loop usageKeys
+
+                    // BARU: Loop kedua untuk item di STOK tapi TIDAK ADA di GI (Non Moving)
+                    self.postMessage({ status: 'progress', value: 85, message: 'Mencari item tanpa pemakaian...' });
+                    stockMap.forEach((stockInfo, key) => {
+                        if (!usageData[key] && stockInfo.stock > 0) { // Hanya jika ada stok
+                            // Item ini punya stok tapi 0 pemakaian 12 bln
+                            const [plant, material] = key.split('-');
+                            
+                            const descUpper = String(stockInfo.matDesc || '').toUpperCase();
+                            let brand = 'OTHER';
+
+                            // 1. Cek daftar brand yang diketahui (DIUBAH: \b dihapus agar lebih fleksibel)
+                            for (const b of masterData.allKnownBrands) {
+                                if (new RegExp(b).test(descUpper)) { brand = b; break; }
+                            }
+
+                            // 2. JIKA brand masih 'OTHER', ambil kata terakhir (LOGIKA DIPERBAIKI)
+                            if (brand === 'OTHER' && descUpper.trim()) {
+                                const words = descUpper.trim().split(' ');
+                                let lastWord = words[words.length - 1];
+                                
+                                // Bersihkan punctuation umum di akhir
+                                lastWord = lastWord.replace(/[\(\)\[\].,;:]+$/, '');
+
+                                // Hanya set jika kata terakhir BUKAN angka murni dan lebih panjang dari 1 huruf (atau A/I)
+                                if (lastWord && isNaN(lastWord) && (lastWord.length > 1 || ['A', 'I'].includes(lastWord))) {
+                                    brand = lastWord;
+                                }
+                            }
+
+                            const manufactureBrand = masterData.chinaBrands.includes(brand) ? 'CHINA' : 'NON CHINA';
+                            const firstDigit = String(material).charAt(0);
+                            const materialType = masterData.materialTypeMaster[firstDigit] || 'Unknown';
+
+                            rejectedMaterials.push({
+                                'PLANT': plant,
+                                'Code Material': material,
+                                'Manufacturer Part No.': stockInfo.manPartNo || 'N/A',
+                                'Material Description': stockInfo.matDesc || 'N/A',
+                                'Brand Manufacture': manufactureBrand,
+                                'Brand': brand,
+                                'MATERIAL TYPE': materialType,
+                                'Reason': 'Non Moving (Tidak ada data GI 12 bln terakhir).'
+                            });
+                        }
+                    });
+
+                    self.postMessage({ status: 'progress', value: 90, message: 'Menerapkan analisis ABC-XYZ...' });
+                    // (Sisa kode kalkulasi ABC-XYZ dan finalResults tetap sama, memproses 'preliminaryResults')
+                    const totalSystemValue = preliminaryResults.reduce((sum, item) => sum + item.annualConsumptionValue, 0);
+                    preliminaryResults.sort((a, b) => b.annualConsumptionValue - a.annualConsumptionValue);
+                    let cumulativeValue = 0;
+                    preliminaryResults.forEach(item => {
+                        cumulativeValue += item.annualConsumptionValue;
+                        const cumulativePercent = (totalSystemValue > 0) ? (cumulativeValue / totalSystemValue) * 100 : 0;
+                        item.abcClass = (cumulativePercent <= 80) ? 'A' : (cumulativePercent <= 95) ? 'B' : 'C';
+                    });
+
+                    const finalResults = preliminaryResults.map(item => {
+                        // --- (A) Ambil info stok ---
+                        const key = item.plant + '-' + item.material;
+                        const stockInfo = stockMap.get(key) || { stock: 0, uom: 'N/A', matDesc: 'N/A', manPartNo: 'N/A' };
+                        
+                        // --- (B) Tentukan Deskripsi & Part No. TERBAIK (BARU) ---
+                        // Prioritaskan info dari file Stok (MB52)
+                        const bestMatDesc = (stockInfo.matDesc && stockInfo.matDesc !== 'N/A') ? stockInfo.matDesc : item.matDesc;
+                        const bestManPartNo = (stockInfo.manPartNo && stockInfo.manPartNo !== 'N/A') ? stockInfo.manPartNo : item.manPartNo;
+                        
+                        // Simpan info terbaik ini ke item
+                        item.matDesc = bestMatDesc;
+                        item.manPartNo = bestManPartNo;
+                        
+                        // --- (C) Hitung BRAND dan MANUFACTURE BRAND (BARU DI SINI) ---
+                        const descUpper = String(bestMatDesc || '').toUpperCase();
+                        let brand = 'OTHER';
+
+                        // 1. Cek daftar brand yang diketahui (DIUBAH: \b dihapus agar lebih fleksibel)
+                        for (const b of masterData.allKnownBrands) {
+                            if (new RegExp(b).test(descUpper)) { brand = b; break; }
+                        }
+                        
+                        // 2. JIKA brand masih 'OTHER', ambil kata terakhir (LOGIKA DIPERBAIKI)
+                        if (brand === 'OTHER' && descUpper.trim()) {
+                            const words = descUpper.trim().split(' ');
+                            let lastWord = words[words.length - 1];
+                            
+                            // Bersihkan punctuation umum di akhir
+                            lastWord = lastWord.replace(/[\(\)\[\].,;:]+$/, '');
+
+                            // Hanya set jika kata terakhir BUKAN angka murni dan lebih panjang dari 1 huruf (atau A/I)
+                            if (lastWord && isNaN(lastWord) && (lastWord.length > 1 || ['A', 'I'].includes(lastWord))) {
+                                brand = lastWord;
+                            }
+                        }
+
+                        item.brand = brand;
+                        item.manufactureBrand = masterData.chinaBrands.includes(brand) ? 'CHINA' : 'NON CHINA';
+                        // --- AKHIR BLOK BARU ---
+
+                        item.xyzClass = (item.cv <= 0.5) ? 'X' : (item.cv <= 1.0) ? 'Y' : 'Z';
+                        item.abcXyzClass = item.abcClass + item.xyzClass;
+
+                        const movementCount = item.transactionCount;
+                        let levelMovement = 'Non Moving';
+                        if (movementCount > 12) {
+                            levelMovement = 'Fast Moving';
+                        } else if (movementCount >= 4) {
+                            levelMovement = 'Medium Moving';
+                        } else if (movementCount >= 1) {
+                            levelMovement = 'Slow Moving';
+                        }
+                        item.levelMovement = levelMovement;
+
+                        const serviceLevel = serviceLevelPolicy[item.abcXyzClass] || 0.80;
+                        const zScore = getZScore(serviceLevel);
+
+                        const avgLT_months = item.leadtimeAvgDays / 30.44;
+                        const stdDevLT_months = item.stdDevLT / 30.44;
+
+                        const sigmaDDLT = Math.sqrt((avgLT_months * Math.pow(item.stdDevDemand, 2)) + (Math.pow(item.usageAvgMonth, 2) * Math.pow(stdDevLT_months, 2)));
+
+                        let safetyStock = zScore * sigmaDDLT;
+                        if (safetyStock < 1) safetyStock = 1;
+
+                        let minStock = safetyStock + (item.usageAvgMonth * avgLT_months);
+                        if (minStock <= safetyStock) minStock = safetyStock + 1;
+
+                        let maxStock = minStock + item.usageAvgMonth;
+                        if (maxStock <= minStock) maxStock = minStock + 1;
+
+                        item['Safety Stock'] = safetyStock;
+                        item['Order Point Min Stock'] = minStock;
+                        item['Max Stock'] = maxStock;
+                        item.serviceLevel = serviceLevel;
+                        item.zScore = zScore;
+                        item.sigmaDDLT = sigmaDDLT;
+
+                        // const key = item.plant + '-' + item.material; // Sudah didefinisikan di atas
+                        // const stockInfo = stockMap.get(key) || { stock: 0, uom: 'N/A' }; // Sudah didefinisikan di atas
+
+                        item.actualStock = stockInfo.stock;
+                        item.uom = (stockInfo.uom === 'N/A' || !stockInfo.uom) ? 'PC' : stockInfo.uom;
+
+                        let stockStatus = 'Balance Stock';
+                        if (item.actualStock < minStock) {
+                            stockStatus = 'Under Stock';
+                        } else if (item.actualStock > maxStock) {
+                            stockStatus = 'Over Stock';
+                        }
+                        item.stockStatus = stockStatus;
+
+                        const usageAvgDay = item.usageAvgMonth / 30.44;
+                        item.coverageStock = (usageAvgDay > 0) ? maxStock / usageAvgDay : 0;
+                        item.roq = Math.max(0, maxStock - item.actualStock);
+
+                        return item;
+                    });
+
+                    // BARU: Kirim kedua array hasil
+                    self.postMessage({ status: 'complete', results: finalResults, rejectedMaterials: rejectedMaterials });
+                } catch (error) {
+                    self.postMessage({ status: 'error', message: error.message, stack: error.stack });
+                }
+            };
+        `;
+        try {
+            const blob = new Blob([workerScript], { type: 'application/javascript' });
+            calculationWorker = new Worker(URL.createObjectURL(blob));
+            calculationWorker.onmessage = function(e) {
+                // BARU: Ambil 'rejectedMaterials' dari data
+                const { status, results, message, stack, value, rejectedMaterials } = e.data;
+
+                if (status === 'progress') {
+                    setProgressRing(value);
+                    if (progressMessage) progressMessage.textContent = message;
+                } else if (status === 'complete') {
+                    setProgressRing(100);
+                    if (progressMessage) progressMessage.textContent = "Selesai!";
+
+                    setTimeout(() => {
+                        if (progressModal) progressModal.classList.add('hidden');
+                        calculationResults = results;
+                        rejectedMaterialsData = rejectedMaterials || []; // BARU: Simpan data non-hitung
+                        
+                        // BARU: Tampilkan jumlah di kedua laporan
+                        let statusMsg = `Kalkulasi & Analisis selesai! Ditemukan ${calculationResults.length} Material/Plant yang valid.`;
+                        if (rejectedMaterialsData.length > 0) {
+                            statusMsg += ` (Terdapat ${rejectedMaterialsData.length} item non-hitung/gagal).`;
+                        }
+                        
+                        // DIUBAH: Cek jika data valid > 0 sebelum menampilkan hasil
+                        if (calculationResults.length > 0) {
+                            showStatus(statusMsg, false); // Tampilkan pesan sukses
+                            renderTable();
+                            if (setupSection) setupSection.style.display = 'none';
+                            if (resultsSection) resultsSection.classList.remove('hidden');
+
+                            // Render Dashboard tetapi tetap hidden
+                            renderDashboard();
+                            isDashboardVisible = false; // Set state awal dashboard hidden
+                            updateDashboardVisibility(); // Panggil fungsi untuk update tampilan
+                        } else {
+                            // Tidak ada data valid, jangan sembunyikan setup
+                            showStatus(statusMsg + " Tidak ada data valid yang bisa dihitung. Mohon periksa file input.", false);
+                        }
+
+
+                        if (calculateBtn) {
+                            calculateBtn.disabled = false;
+                            calculateBtn.innerHTML = 'Hitung Stok & Analisis';
+                        }
+                    }, 500);
+                } else if (status === 'error') {
+                    if (progressModal) progressModal.classList.add('hidden');
+                    showStatus(`Terjadi kesalahan di latar belakang: ${message}.`, true);
+                    console.error("Worker error:", message, stack);
+                    if (calculateBtn) {
+                        calculateBtn.disabled = false;
+                        calculateBtn.innerHTML = 'Hitung Stok & Analisis';
+                    }
+                }
+            };
+        } catch (e) { console.error("Failed to create worker:", e); calculationWorker = null; }
+
+        // --- Master Data ---
+        const plantMaster = {'PL01':'MSJ','PL02':'TDM','PL03':'SBB','PL04':'AGM','PL05':'PMSS','PL06':'MAS','PL07':'COMEX MSJ','PL08':'COMEX PALARAN','PL09':'COMEX AGM','PL10':'BSSR 2','PL11':'PKM','PL12':'SMD','PL13':'JKT','PL14':'KUP','PL15':'TAJ','PL16':'MME','PL17':'MBL MINING','PL18':'COMEX-MAS','PL19':'COMEX CILEGON','PL20':'SAS','PL21':'BSEE','PL22':'BRN','PL23':'KUD','PL24':'BYN','PL25':'PT. CITRA DAYAK INDAH','PL26':'MHU','PL27':'MBL HAULING','PL28':'DC PALARAN'};
+        const materialTypeMaster = {'1':'SPRT','2':'FOGC','3':'TYRE','4':'CONS','5':'GENS','6':'ASET','7':'JASA','8':'MDLE'};
+        const chinaBrands = ['DONGFENG', 'LGMG', 'SDLG', 'SHANTUI', 'XCMG', 'BEIBEN', 'LIUGONG', 'SAKAI', 'WEICHAI'];
+        const otherCommonBrands = ['MERCEDES BENZ', 'JOHN DEERE', 'NEW HOLLAND', 'KOMATSU', 'CATERPILLAR', 'CAT', 'HITACHI', 'VOLVO', 'KOBELCO', 'HYUNDAI', 'DOOSAN', 'PERKINS', 'CUMMINS', 'BOSCH', 'DENSO', 'FLEETGUARD', 'DONALDSON', 'PARKER', 'GATES', 'MICHELIN', 'BRIDGESTONE', 'GOODYEAR', 'SHELL', 'MOBIL', 'PERTAMINA', 'SCANIA']; // DIUBAH: Menambahkan brand multi-kata
+        const allKnownBrands = [...chinaBrands, ...otherCommonBrands];
+        
+        // BARU: Sortir brand dari terpanjang ke terpendek.
+        // Ini krusial agar "MERCEDES BENZ" terdeteksi sebelum "BENZ".
+        allKnownBrands.sort((a, b) => b.length - a.length);
+        
+        const serviceLevelPolicy = { 'AX': 0.98, 'AY': 0.95, 'AZ': 0.90, 'BX': 0.95, 'BY': 0.90, 'BZ': 0.85, 'CX': 0.90, 'CY': 0.85, 'CZ': 0.80 };
+
+        // --- Helper Functions ---
+        const updateButtonState = () => {
+            if (calculateBtn) calculateBtn.disabled = !(giFileBuffer && ltFileBuffer && stockFileBuffer);
+        };
+        const clearStatus = () => {
+            if (statusMessage) statusMessage.innerHTML = '';
+        };
+        const showStatus = (message, isError = false, isLoading = false) => {
+            if (!statusMessage) return;
+            let colors = isError ? 'bg-red-500/10 border-red-500/30 text-red-300' : 'bg-blue-500/10 border-blue-500/30 text-blue-300';
+            if (isLoading) colors = 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300';
+            const icon = isLoading ? `<div class="spinner w-4 h-4 border-2 rounded-full inline-block mr-2"></div>` : '';
+            statusMessage.innerHTML = `<div class="p-4 rounded-lg shadow-lg border ${colors} font-medium">${icon} ${message}</div>`;
+        };
+        const updateFileLabel = (labelEl, isSuccess, fileName, defaultName) => {
+            if (!labelEl) return;
+            const defaultContent = labelEl.querySelector('.default-content');
+            if (!defaultContent) return;
+            const nameEl = defaultContent.querySelector('span');
+            labelEl.classList.toggle('success', isSuccess);
+            if (nameEl) nameEl.textContent = isSuccess ? fileName : defaultName;
+            const iconDefault = defaultContent.querySelector('.icon-default');
+            const iconSuccess = defaultContent.querySelector('.icon-success');
+            if (iconDefault) iconDefault.classList.toggle('hidden', isSuccess);
+            if (iconSuccess) iconSuccess.classList.toggle('hidden', !isSuccess);
+            defaultContent.classList.remove('hidden');
+        };
+
+        const resetCalculator = () => {
+            // DIUBAH: Hapus dari localStorage
+            giFileBuffer = null; try { localStorage.removeItem('giFileBase64'); localStorage.removeItem('giFileName'); } catch(e) {}
+            ltFileBuffer = null; try { localStorage.removeItem('ltFileBase64'); localStorage.removeItem('ltFileName'); } catch(e) {}
+            stockFileBuffer = null; try { localStorage.removeItem('stockFileBase64'); localStorage.removeItem('stockFileName'); } catch(e) {}
+
+            calculationResults = []; 
+            rejectedMaterialsData = []; // BARU
+            filteredAndSortedResults = [];
+            currentFilter = '';
+            manufactureBrandFilter = ''; if (manufactureFilter) manufactureFilter.value = '';
+            stockStatusFilterValue = ''; if (stockStatusFilter) stockStatusFilter.value = '';
+            levelMovementFilterValue = ''; if (levelMovementFilter) levelMovementFilter.value = '';
+            currentSort = { key: 'annualConsumptionValue', direction: 'desc' }; currentPage = 1;
+
+            // Reset state dashboard
+            currentKpiType = 'balance';
+            currentKpiGroupBy = 'MATERIAL TYPE';
+            isDashboardVisible = false; // Sembunyikan dashboard saat reset
+            updateDashboardVisibility(); // Update tampilan tombol dan dashboard
+            if (kpiNavBalanceBtn) kpiNavBalanceBtn.classList.add('active');
+            if (kpiNavMovementBtn) kpiNavMovementBtn.classList.remove('active');
+            if (kpiGroupBySelect) kpiGroupBySelect.value = 'MATERIAL TYPE';
+            if (kpiChartInstance) {
+                kpiChartInstance.destroy();
+                kpiChartInstance = null;
+            }
+
+            if (giFileInput) giFileInput.value = null;
+            if (ltFileInput) ltFileInput.value = null;
+            if (stockFileInput) stockFileInput.value = null;
+            if (searchInput) searchInput.value = '';
+            updateFileLabel(giFileLabel, false, '', 'Pilih File GI');
+            updateFileLabel(ltFileLabel, false, '', 'Pilih File LT');
+            updateFileLabel(stockFileLabel, false, '', 'Pilih File Stok');
+            if (resultsSection) resultsSection.classList.add('hidden');
+            if (setupSection) setupSection.style.display = 'block';
+            clearStatus(); updateButtonState();
+            if (calculateBtn) {
+                calculateBtn.innerHTML = 'Hitung Stok & Analisis';
+                calculateBtn.disabled = true;
+            }
+            // BARU: Muat ulang dropdown histori
+            populateHistoryDropdown();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        
+        const formatMonthKey = (key) => {
+             const [year, month] = key.split('-');
+             const date = new Date(Date.UTC(year, month - 1, 1));
+             return date.toLocaleString('id-ID', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+        };
+
+        // --- Fungsi Upload File ---
+        const handleFileUpload = (event, dataType) => {
+            const file = event.target.files[0]; if (!file) return;
+            const labelEl = dataType === 'gi' ? giFileLabel : (dataType === 'lt' ? ltFileLabel : stockFileLabel);
+            const defaultName = dataType === 'gi' ? 'Pilih File GI' : (dataType === 'lt' ? 'Pilih File LT' : 'Pilih File Stok');
+            if (!labelEl) return; // Pengaman
+
+            const reader = new FileReader();
+            reader.onload = e => {
+                const buffer = e.target.result; // Ini adalah ArrayBuffer
+                let base64String = '';
+                try {
+                    base64String = bufferToBase64(buffer);
+                } catch (e) {
+                    showStatus('Gagal mengkonversi file untuk disimpan.', true);
+                    return;
+                }
+
+                // --- FIX DIMULAI DI SINI ---
+                // Blok if/else if yang rusak telah diperbaiki
+                if (dataType === 'gi') {
+                    giFileBuffer = buffer;
+                    try { localStorage.setItem('giFileBase64', base64String); } catch(e) { showStatus('Gagal menyimpan file GI ke cache.', true); }
+                    try { localStorage.setItem('giFileName', file.name); } catch(e) {} // BARU
+                } else if (dataType === 'lt') {
+                    ltFileBuffer = buffer;
+                    try { localStorage.setItem('ltFileBase64', base64String); } catch(e) { showStatus('Gagal menyimpan file LT ke cache.', true); }
+                    try { localStorage.setItem('ltFileName', file.name); } catch(e) {} // BARU
+                } else if (dataType === 'stock') {
+                    stockFileBuffer = buffer;
+                    try { localStorage.setItem('stockFileBase64', base64String); } catch(e) { showStatus('Gagal menyimpan file Stok ke cache.', true); }
+                    try { localStorage.setItem('stockFileName', file.name); } catch(e) {} // BARU
+                }
+                // --- FIX BERAKHIR DI SINI ---
+
+                updateButtonState();
+                updateFileLabel(labelEl, true, file.name, defaultName);
+            };
+            reader.onerror = () => {
+                showStatus('Gagal membaca file.', true);
+                updateFileLabel(labelEl, false, '', defaultName);
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        // --- Event Listeners ---
+        if (giFileInput) giFileInput.addEventListener('change', (e) => handleFileUpload(e, 'gi'));
+        if (ltFileInput) ltFileInput.addEventListener('change', (e) => handleFileUpload(e, 'lt'));
+        if (stockFileInput) stockFileInput.addEventListener('change', (e) => handleFileUpload(e, 'stock'));
+        if (resetBtn) resetBtn.addEventListener('click', resetCalculator);
+
+        // BARU: Event Listener untuk Histori
+        if (historySelect) {
+            historySelect.addEventListener('change', () => {
+                const hasSelection = !!historySelect.value;
+                if (loadSessionBtn) loadSessionBtn.disabled = !hasSelection;
+                if (deleteSessionBtn) deleteSessionBtn.disabled = !hasSelection;
+            });
+        }
+
+        if (loadSessionBtn) loadSessionBtn.addEventListener('click', loadSelectedSession);
+        if (deleteSessionBtn) deleteSessionBtn.addEventListener('click', deleteSelectedSession);
+        
+        // Listener Tombol Simpan Sesi
+        if (saveSessionBtn) saveSessionBtn.addEventListener('click', () => {
+            if (saveSessionModal) {
+                const now = new Date();
+                const options = { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+                const defaultName = `Analisis ${new Intl.DateTimeFormat('id-ID', options).format(now)}`;
+                if (sessionNameInput) sessionNameInput.value = defaultName;
+                if (saveSessionFeedback) saveSessionFeedback.classList.add('hidden');
+                saveSessionModal.classList.remove('hidden');
+            }
+        });
+
+        // Listener Modal Simpan Sesi
+        if (saveSessionModalCloseBtn) saveSessionModalCloseBtn.addEventListener('click', () => saveSessionModal.classList.add('hidden'));
+        if (saveSessionCancelBtn) saveSessionCancelBtn.addEventListener('click', () => saveSessionModal.classList.add('hidden'));
+        if (saveSessionModal) saveSessionModal.addEventListener('click', (e) => {
+            if (e.target === saveSessionModal) saveSessionModal.classList.add('hidden');
+        });
+        if (saveSessionConfirmBtn) saveSessionConfirmBtn.addEventListener('click', saveCurrentSession);
+
+        // DIUBAH: Logika kalkulasi dipisahkan ke fungsi sendiri
+        function startCalculation() {
+            if (!calculationWorker) { showStatus('Web Worker tidak didukung.', true); return; }
+            if (!giFileBuffer || !ltFileBuffer || !stockFileBuffer) { showStatus('Mohon unggah file GI, LT, dan Stok terlebih dahulu.', true); return; }
+            
+            clearStatus();
+            
+            if (calculateBtn) {
+                calculateBtn.disabled = true;
+                calculateBtn.innerHTML = `<div class="spinner w-5 h-5 border-2 rounded-full inline-block"></div><span class="ml-2">Memproses...</span>`;
+            }
+
+            if (progressModal) progressModal.classList.remove('hidden');
+            setProgressRing(0);
+            if (progressMessage) progressMessage.textContent = 'Memulai proses...';
+
+            const masterData = { plantMaster, materialTypeMaster, chinaBrands, allKnownBrands, serviceLevelPolicy };
+            calculationWorker.postMessage({ giFileBuffer, ltFileBuffer, stockFileBuffer, masterData });
+        }
+
+        if (calculateBtn) calculateBtn.addEventListener('click', () => {
+            // Panggil fungsi kalkulasi yang baru
+            startCalculation();
+        });
+
+        // --- Table Rendering, Sorting, Filtering, Pagination ---
+        function renderTable() {
+            let processedResults = [...calculationResults];
+
+            if (currentFilter) {
+                const filterText = currentFilter.toLowerCase();
+                processedResults = processedResults.filter(item => Object.values(item).some(val => String(val).toLowerCase().includes(filterText)));
+            }
+            if (manufactureBrandFilter) {
+                processedResults = processedResults.filter(item => item.manufactureBrand === manufactureBrandFilter);
+            }
+            if (stockStatusFilterValue) {
+                processedResults = processedResults.filter(item => item.stockStatus === stockStatusFilterValue);
+            }
+            if (levelMovementFilterValue) {
+                processedResults = processedResults.filter(item => item.levelMovement === levelMovementFilterValue);
+            }
+
+            const { key, direction } = currentSort;
+            if (key) {
+                processedResults.sort((a, b) => {
+                    const valA = a[key], valB = b[key];
+                    if (typeof valA === 'number') return direction === 'asc' ? valA - valB : valB - valA;
+                    return (direction === 'asc' ? 1 : -1) * String(valA || '').localeCompare(String(valB || ''), undefined, {numeric: true});
+                });
+            }
+            filteredAndSortedResults = processedResults;
+            displayPaginatedResults(); updateSortHeaders();
+        }
+
+        function displayPaginatedResults() {
+            if (!resultsTableBody || !paginationControls || !resultsCount) return;
+
+            const start = (currentPage - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const paginatedItems = filteredAndSortedResults.slice(start, end);
+            resultsCount.textContent = filteredAndSortedResults.length;
+
+            if (filteredAndSortedResults.length === 0) {
+                resultsTableBody.innerHTML = `<tr><td colspan="22" class="text-center p-8 text-slate-500">Tidak ada hasil.</td></tr>`; // Updated colspan
+                paginationControls.innerHTML = ''; return;
+            }
+             resultsTableBody.innerHTML = paginatedItems.map((item, index) => `
+                <tr data-index="${calculationResults.indexOf(item)}">
+                    <td class="px-2 py-2 font-medium text-slate-400 text-center">${start + index + 1}</td>
+                    <td class="px-2 py-2 font-medium text-white text-center">${item.plant}</td>
+                    <td class="px-2 py-2 text-slate-300 text-center">${item.material}</td>
+                    <td class="px-2 py-2 text-slate-400 text-center">${item.manPartNo || 'N/A'}</td>
+                    <td class="px-2 py-2 text-slate-400 max-w-[200px] truncate text-left" title="${item.matDesc || ''}">${item.matDesc || 'N/A'}</td>
+                    <td class="px-2 py-2 text-cyan-400 font-semibold text-center">${item.brand || 'N/A'}</td>
+                    <td class="px-2 py-2 text-slate-400 text-center">${item.manufactureBrand}</td>
+                    <td class="px-2 py-2 text-slate-400 text-center">${item['MATERIAL TYPE']}</td>
+                    <td class="px-2 py-2 text-slate-300 font-semibold text-right" data-cell-type="nilai-konsumsi">${Math.round(item.annualConsumptionValue).toLocaleString()}</td>
+                    <td class="px-2 py-2 text-center"><span class="abc-xyz-badge badge-${item.abcClass.toLowerCase()}">${item.abcClass}</span></td>
+                    <td class="px-2 py-2 text-slate-300 text-center" data-cell-type="cv">${item.cv.toFixed(2)}</td>
+                    <td class="px-2 py-2 text-center"><span class="abc-xyz-badge badge-${item.cv.toFixed(2) <= 0.5 ? 'x' : (item.cv.toFixed(2) <= 1.0 ? 'y' : 'z')}">${item.xyzClass}</span></td>
+                    <td class="px-2 py-2 text-center font-bold text-white" data-cell-type="abc-xyz-matrix" title="Klik ganda untuk definisi">${item.abcXyzClass}</td>
+                    <td class="px-2 py-2 text-center" data-cell-type="level-movement"><span class="abc-xyz-badge badge-${item.levelMovement.toLowerCase().replace(' ', '-')}">${item.levelMovement}</span></td>
+                    <td class="px-2 py-2 text-slate-300 font-semibold text-right" data-cell-type="ss">${Math.ceil(item['Safety Stock']).toLocaleString()}</td>
+                    <td class="px-2 py-2 text-yellow-400 font-bold text-right" data-cell-type="min">${Math.ceil(item['Order Point Min Stock']).toLocaleString()}</td>
+                    <td class="px-2 py-2 font-bold text-right" style="color:var(--glow-color);" data-cell-type="max">${Math.ceil(item['Max Stock']).toLocaleString()}</td>
+                    <td class="px-2 py-2 text-green-400 font-bold text-right" data-cell-type="roq">${Math.ceil(item.roq).toLocaleString()}</td>
+                    <td class="px-2 py-2 text-white font-semibold text-right">${item.actualStock.toLocaleString()}</td>
+                    <td class="px-2 py-2 text-slate-400 text-center">${item.uom}</td>
+                    <td class="px-2 py-2 text-center" data-cell-type="stock-status"><span class="abc-xyz-badge badge-${item.stockStatus.toLowerCase().replace(' ', '-')}">${item.stockStatus}</span></td>
+                </tr>`).join('');
+            setupPagination();
+        }
+
+        function setupPagination() {
+            if (!paginationControls) return;
+            const totalPages = Math.ceil(filteredAndSortedResults.length / rowsPerPage);
+            paginationControls.innerHTML = ''; if (totalPages <= 1) return;
+
+            let paginationHTML = `<button class="pagination-btn px-3 py-1 rounded-md" ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}">&laquo;</button>`;
+            const maxPagesToShow = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+            let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+            if(endPage - startPage + 1 < maxPagesToShow) { startPage = Math.max(1, endPage - maxPagesToShow + 1); }
+            if (startPage > 1) { paginationHTML += `<button class="pagination-btn px-3 py-1 rounded-md" data-page="1">1</button>`; if (startPage > 2) paginationHTML += `<span class="px-3 py-1 text-slate-500">...</span>`; }
+            for (let i = startPage; i <= endPage; i++) { paginationHTML += `<button class="pagination-btn px-3 py-1 rounded-md ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`; }
+            if (endPage < totalPages) { if (endPage < totalPages - 1) paginationHTML += `<span class="px-3 py-1 text-slate-500">...</span>`; paginationHTML += `<button class="pagination-btn px-3 py-1 rounded-md" data-page="${totalPages}">${totalPages}</button>`; }
+            paginationHTML += `<button class="pagination-btn px-3 py-1 rounded-md" ${currentPage === totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">&raquo;</button>`;
+
+            paginationControls.innerHTML = paginationHTML;
+        }
+
+        function updateSortHeaders() {
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                const sortKey = th.dataset.sort;
+                const arrow = th.querySelector('.sort-arrow');
+                if (!arrow) return;
+                th.classList.toggle('sorted', sortKey === currentSort.key);
+                arrow.classList.remove('asc', 'desc');
+                if (sortKey === currentSort.key) arrow.classList.add(currentSort.direction);
+            });
+        }
+
+        // --- Event Listeners for Table Interaction ---
+        if (paginationControls) paginationControls.addEventListener('click', (e) => {
+            const target = e.target.closest('button'); if (!target || target.disabled) return;
+            currentPage = parseInt(target.dataset.page);
+            displayPaginatedResults();
+        });
+
+        if (searchInput) searchInput.addEventListener('input', (e) => {
+            currentPage = 1; currentFilter = e.target.value; renderTable();
+        });
+
+        if (manufactureFilter) manufactureFilter.addEventListener('change', (e) => {
+            currentPage = 1; manufactureBrandFilter = e.target.value; renderTable();
+        });
+
+        if (stockStatusFilter) stockStatusFilter.addEventListener('change', (e) => {
+            currentPage = 1; stockStatusFilterValue = e.target.value; renderTable();
+        });
+
+        if (levelMovementFilter) levelMovementFilter.addEventListener('change', (e) => {
+            currentPage = 1; levelMovementFilterValue = e.target.value; renderTable();
+        });
+
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const sortKey = th.dataset.sort;
+                currentSort.direction = (currentSort.key === sortKey && currentSort.direction === 'asc') ? 'desc' : 'asc';
+                currentSort.key = sortKey;
+                renderTable();
+            });
+        });
+
+        // --- Download Button ---
+        if (downloadBtn) downloadBtn.addEventListener('click', () => {
+             const dataToDownload = filteredAndSortedResults.map((item, index) => ({
+                 'No.': index + 1, 'PLANT': item.plant, 'Code Material': item.material, 'Manufacturer Part No.': item.manPartNo,
+                 'Material Description': item.matDesc, 'Brand': item.brand, 'Manufacture Brand': item.manufactureBrand, 'MATERIAL TYPE': item['MATERIAL TYPE'],
+                 'Nilai Konsumsi Tahunan': Math.round(item.annualConsumptionValue),
+                 'Kelas ABC': item.abcClass, 'Koefisien Variasi (CV)': item.cv.toFixed(4),
+                 'Kelas XYZ': item.xyzClass, 'Matriks ABC-XYZ': item.abcXyzClass,
+                 'Level Movement': item.levelMovement,
+                 'Target Service Level': `${(item.serviceLevel*100).toFixed(0)}%`,
+                 'Safety Stock': Math.ceil(item['Safety Stock']),
+                 'Order Point Min Stock': Math.ceil(item['Order Point Min Stock']),
+                 'Max Stock': Math.ceil(item['Max Stock']),
+                 'Coverage Stock (Hari)': Math.round(item.coverageStock),
+                 'ROQ (Qty to Order)': Math.ceil(item.roq),
+                 'Actual Stock': item.actualStock,
+                 'UOM': item.uom,
+                 'Stock Status': item.stockStatus
+             }));
+             if(dataToDownload.length === 0) { showStatus('Tidak ada data untuk diunduh.', true); return; }
+             const ws = XLSX.utils.json_to_sheet(dataToDownload);
+             const wb = XLSX.utils.book_new();
+             XLSX.utils.book_append_sheet(wb, ws, "Hasil Analisis Stok");
+             XLSX.writeFile(wb, "Hasil_Analisis_Stok_ABC_XYZ.xlsx");
+        });
+
+        // BARU: Listener untuk tombol unduh non-hitung
+        if (downloadRejectedBtn) downloadRejectedBtn.addEventListener('click', () => {
+            if(rejectedMaterialsData.length === 0) { 
+                showStatus('Tidak ada data material yang ditolak/non-moving untuk diunduh.', true); 
+                return; 
+            }
+            
+            // Data sudah dalam format JSON yang benar dari worker
+            const ws = XLSX.utils.json_to_sheet(rejectedMaterialsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Material Non-Hitung");
+            XLSX.writeFile(wb, "Hasil_Material_Non_Hitung_MinMax.xlsx");
+        });
+
+
+        // --- Modal Logic ---
+        // DIUBAH: openDefinitionModal menerima item opsional
+        function openDefinitionModal(title, contentHTML, item = null) {
+            if (!modalTitle || !modalContent || !detailsModal) return;
+
+            modalTitle.textContent = title;
+            let finalContent = '<div class="p-4 text-slate-300 space-y-4">';
+
+            // Hanya tampilkan info material jika item diberikan
+            if (item) {
+                finalContent += `
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
+                        <p class="text-sm text-slate-400">Material: <b class="text-white">${item.material}</b></p>
+                        <p class="text-sm text-slate-400">Part No: <b class="text-white">${item.manPartNo || 'N/A'}</b></p>
+                        <p class="text-sm text-slate-400">Desc: <b class="text-white">${item.matDesc || 'N/A'}</b></p>
+                    </div>`;
+            }
+
+            finalContent += contentHTML; // Tambahkan definisi utama
+            finalContent += '</div>';
+            modalContent.innerHTML = finalContent;
+            detailsModal.classList.remove('hidden');
+        }
+        
+        // Sisa Modal Logic (openModal, openRoqModal) tetap sama
+        function openModal(item, cellType) {
+             if (!modalTitle || !modalContent || !detailsModal) return;
+
+             modalTitle.textContent = `Detail Perhitungan: ${item.material}`;
+             const ss = Math.ceil(item['Safety Stock']); const min = Math.ceil(item['Order Point Min Stock']); const max = Math.ceil(item['Max Stock']);
+             const uam = item.usageAvgMonth.toFixed(2); const avgLT_months = (item.leadtimeAvgDays / 30.44).toFixed(2);
+
+             const sigmaDDLT_val = item.sigmaDDLT.toFixed(2);
+             const stdDevD_sq = Math.pow(item.stdDevDemand, 2).toFixed(2);
+             const avgD_sq = Math.pow(item.usageAvgMonth, 2).toFixed(2);
+             const stdDevLT_sq = Math.pow((item.stdDevLT / 30.44), 2).toFixed(4);
+
+             let calculationDetailHtml = '';
+             switch (cellType) {
+                 case 'nilai-konsumsi':
+                     calculationDetailHtml = `<h4 class="font-bold text-white mb-2">Detail: Nilai Konsumsi</h4>
+                         <p class="text-slate-300">Nilai Konsumsi: <b class="text-cyan-300 text-lg">${Math.round(item.annualConsumptionValue).toLocaleString()}</b></p>
+                         <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400">
+                             <p>Nilai = Total Konsumsi Tahunan × Harga Rata-rata</p>
+                             <p>Nilai = ${item.totalUsage.toLocaleString()} × ${item.avgPrice.toFixed(2)}</p>
+                         </div>`; break;
+                 case 'cv':
+                     calculationDetailHtml = `<h4 class="font-bold text-white mb-2">Detail: Koefisien Variasi (CV)</h4>
+                          <p class="text-slate-300">CV: <b class="text-cyan-300 text-lg">${item.cv.toFixed(3)}</b></p>
+                          <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400">
+                               <p>CV = StdDev Konsumsi Bulanan / Rata-rata Konsumsi Bulanan</p>
+                               <p>CV = ${item.stdDevDemand.toFixed(2)} / ${uam}</p>
+                          </div>`; break;
+                 case 'ss':
+                     calculationDetailHtml = `<h4 class="font-bold text-white mb-2">Detail: Safety Stock (SS)</h4>
+                         <p class="text-slate-300">Safety Stock: <b class="text-cyan-300 text-lg">${ss.toLocaleString()}</b></p>
+                         <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400">
+                            <p class="text-white">(Metode Lengkap: Variabilitas LT & Demand)</p>
+                            <p>SS = Z &times; &sigma;<sub>DDLT</sub></p>
+                            <p>&sigma;<sub>DDLT</sub> = &radic;( (AvgLT &times; &sigma;<sub>D</sub><sup>2</sup>) + (&mu;<sub>D</sub><sup>2</sup> &times; &sigma;<sub>LT</sub><sup>2</sup>) )</p>
+                            <p class="border-t border-slate-600 pt-1 mt-1">&sigma;<sub>DDLT</sub> = &radic;( (${avgLT_months} &times; ${stdDevD_sq}) + (${avgD_sq} &times; ${stdDevLT_sq}) ) = ${sigmaDDLT_val}</p>
+                            <p class="mt-1">SS = ${item.zScore} &times; ${sigmaDDLT_val}</p>
+                            <p class="text-amber-300 text-xs mt-1">SS dibulatkan ke atas ke 1 jika < 1.</p>
+                         </div>`; break;
+                 case 'min':
+                      calculationDetailHtml = `<h4 class="font-bold text-white mb-2">Detail: Min Stock (ROP)</h4>
+                         <p class="text-slate-300">Min (ROP): <b class="text-cyan-300 text-lg">${min.toLocaleString()}</b></p>
+                         <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400">
+                                 <p>MIN = SS + (Rata-rata Konsumsi/Bln × Rata-rata LT/Bln)</p>
+                                 <p>MIN = ${ss.toLocaleString()} + (${uam} × ${avgLT_months})</p>
+                                 <p class="text-amber-300 text-xs mt-1">MIN diatur ke SS+1 jika &lt;= SS.</p>
+                         </div>`; break;
+                 case 'max':
+                        calculationDetailHtml = `<h4 class="font-bold text-white mb-2">Detail: Max Stock</h4>
+                         <p class="text-slate-300">Max Stock: <b class="text-cyan-300 text-lg">${max.toLocaleString()}</b></p>
+                         <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400">
+                                 <p>MAX = MIN + Rata-rata Konsumsi/Bln</p>
+                                 <p>MAX = ${min.toLocaleString()} + ${uam}</p>
+                                 <p class="text-amber-300 text-xs mt-1">MAX diatur ke MIN+1 jika &lt;= MIN.</p>
+                         </div>`; break;
+             }
+
+             let content = `<div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                 <p class="text-slate-400">Material: <b class="text-white">${item.material}</b> (${item.uom})</p> <p class="text-slate-400">Plant: <b class="text-white">${item.plant} - ${plantMaster[item.plant] || 'N/A'}</b></p>
+                 <p class="text-slate-400">Manuf. Part No.: <b class="text-white">${item.manPartNo || 'N/A'}</b></p> <p class="text-slate-400">Type: <b class="text-white">${item['MATERIAL TYPE']}</b></p>
+                 <p class="text-slate-400">Brand: <b class="text-white">${item.brand} (${item.manufactureBrand})</b></p> <p class="text-slate-400 col-span-1 sm:col-span-2">Description: <b class="text-white">${item.matDesc || 'N/A'}</b></p>
+             </div>
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-700 pt-4">
+                 <div> <h4 class="font-bold text-white mb-2">Analisis Strategis</h4>
+                     <ul class="text-slate-300 space-y-1">
+                         <li>Nilai Konsumsi: <b class="text-cyan-300">${Math.round(item.annualConsumptionValue).toLocaleString()}</b></li>
+                         <li>Kelas ABC: <b class="text-cyan-300">${item.abcClass}</b> | Kelas XYZ: <b class="text-cyan-300">${item.xyzClass}</b></li>
+                         <li class="text-lg">Matriks Strategi: <b class="text-yellow-300">${item.abcXyzClass}</b></li>
+                         <li class="mt-2">Level Movement: <b class="text-cyan-300">${item.levelMovement}</b> (${item.transactionCount}x/thn)</li>
+                         <li>Target Service Level: <b class="text-cyan-300">${(item.serviceLevel*100).toFixed(0)}%</b> (Z-score: ${item.zScore})</li>
+                     </ul>
+                 </div>
+                 <div> ${calculationDetailHtml} </div>
+             </div>
+             <div class="border-t border-slate-700 pt-4 mt-4 col-span-1 md:col-span-2">
+                 <h4 class="font-bold text-white mb-2">Data Aktual yang Digunakan (Setelah Outlier Dihapus)</h4>
+                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     <div>
+                         <p class="text-slate-400 text-sm font-semibold">Data Lead Time (Hari) dari ZMMR004:</p>
+                         <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400 max-h-48 overflow-y-auto">
+                             <table class="w-full text-left">
+                                 <thead class="sticky top-0 bg-slate-800">
+                                     <tr>
+                                         <th class="p-1">LT (Hari)</th> <th class="p-1">PO Number</th> <th class="p-1">PO Date</th>
+                                         <th class="p-1">GR Number</th> <th class="p-1">GR Date</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody class="divide-y divide-slate-700">
+                                     ${item.rawLeadTimeTransactions.map(tx => `
+                                         <tr>
+                                             <td class="p-1 font-bold">${tx.ltDays.toFixed(0)} ${tx.isDefault ? '<span class="text-yellow-400 text-xs">(Default)</span>' : ''}</td>
+                                             <td class="p-1">${tx.poNumber}</td> <td class="p-1">${tx.poDate}</td>
+                                             <td class="p-1">${tx.grNumber}</td> <td class="p-1">${tx.grDate}</td>
+                                         </tr>
+                                     `).join('')}
+                                 </tbody>
+                             </table>
+                         </div>
+                         <p class="text-slate-500 text-xs mt-1">
+                            Total: ${item.rawLeadTimeTransactions.length} data poin. Rata-rata: ${item.leadtimeAvgDays.toFixed(2)} hari.
+                            ${item.rawLeadTimeTransactions[0]?.isDefault ? '<b class="text-yellow-400 block">Menggunakan default 7 hari (data LT tidak ditemukan).</b>' : ''}
+                        </p>
+                     </div>
+                     <div>
+                         <p class="text-slate-400 text-sm font-semibold">Data Konsumsi Bulanan (Unit) dari MB51:</p>
+                         <div class="font-mono text-xs bg-slate-800 p-2 rounded mt-1 text-slate-400 max-h-48 overflow-y-auto">
+                             <table class="w-full text-left">
+                                 <thead class="sticky top-0 bg-slate-800">
+                                     <tr>
+                                         <th class="p-1">Periode</th> <th class="p-1 text-right">Konsumsi</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody class="divide-y divide-slate-700">
+                                     ${Object.entries(item.fullMonthlyUsages).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `
+                                         <tr>
+                                             <td class="p-1">${formatMonthKey(key)}</td>
+                                             <td class="p-1 text-right font-bold">${value.toLocaleString()}</td>
+                                         </tr>
+                                     `).join('')}
+                                 </tbody>
+                             </table>
+                         </div>
+                         <p class="text-slate-500 text-xs mt-1">Total: ${Object.keys(item.fullMonthlyUsages).length} bulan data. Rata-rata (utk ROP/MAX): ${item.usageAvgMonth.toFixed(2)} unit/bln.</p>
+                     </div>
+                 </div>
+             </div>`;
+             modalContent.innerHTML = content;
+             detailsModal.classList.remove('hidden');
+        }
+
+        function openRoqModal(item) {
+            if (!modalTitle || !modalContent || !detailsModal) return;
+
+            modalTitle.textContent = `Detail Perhitungan: ROQ (Re-Order Qty)`;
+            const roq = Math.ceil(item.roq);
+            const max = Math.ceil(item['Max Stock']);
+            const actual = item.actualStock;
+
+            openDefinitionModal(
+                `Definisi: ROQ (Re-Order Qty)`,
+                `
+                <h4 class="font-bold text-white mb-2 text-lg">Detail: Re-Order Quantity (ROQ)</h4>
+                <p class="text-slate-300 text-xl">ROQ: <b class="text-green-400 text-2xl">${roq.toLocaleString()}</b> ${item.uom}</p>
+                <div class="font-mono text-sm bg-slate-800 p-4 rounded mt-4 text-slate-300">
+                    <p>ROQ = Max Stock - Stock Aktual</p>
+                    <p class="border-t border-slate-600 pt-2 mt-2">ROQ = ${max.toLocaleString()} - ${actual.toLocaleString()}</p>
+                    <p class="text-amber-300 text-xs mt-2">ROQ diatur ke 0 jika Stock Aktual > Max Stock.</p>
+                </div>
+                `,
+                item // Kirim item untuk menampilkan info material
+            );
+        }
+
+        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => detailsModal.classList.add('hidden'));
+        if (detailsModal) detailsModal.addEventListener('click', (e) => (e.target === detailsModal) && detailsModal.classList.add('hidden'));
+
+        // --- Listener untuk Pop-up (Klik Tunggal & Ganda pada Sel & Header) ---
+        // DIUBAH: Menggunakan event listener yang sudah ada
+        if (resultsTableBody) {
+            // Listener Klik Tunggal pada Sel Data
+            resultsTableBody.addEventListener('click', (e) => {
+                const cell = e.target.closest('td[data-cell-type]');
+                const dblClickCells = ['roq', 'level-movement', 'stock-status'];
+                if (!cell || dblClickCells.includes(cell.dataset.cellType)) return;
+
+                const row = cell.closest('tr');
+                if (!row || !row.dataset.index) return;
+                const item = calculationResults[row.dataset.index];
+                const cellType = cell.dataset.cellType;
+                if (item) { openModal(item, cellType); }
+            });
+
+            // Listener Klik Ganda pada Sel Data
+            resultsTableBody.addEventListener('dblclick', (e) => {
+                const cell = e.target.closest('td[data-cell-type]');
+                if (!cell) return;
+
+                const row = cell.closest('tr');
+                if (!row || !row.dataset.index) return;
+
+                const item = calculationResults[row.dataset.index];
+                if (!item) return;
+
+                const cellType = cell.dataset.cellType;
+
+                if (cellType === 'roq') {
+                    openRoqModal(item);
+                } else if (cellType === 'level-movement') {
+                    const movementDefinitions = `
+                        <h4 class="text-lg font-semibold text-white mb-2">Definisi Level Movement</h4>
+                        <p class="text-sm">Berdasarkan frekuensi transaksi pemakaian (GI) dalam 12 bulan terakhir.</p>
+                        <ul class="space-y-3 mt-4 text-sm">
+                            <li><strong class="text-cyan-400">Fast Moving:</strong> > 12 transaksi/tahun.</li>
+                            <li><strong class="text-violet-400">Medium Moving:</strong> 4 - 12 transaksi/tahun.</li>
+                            <li><strong class="text-orange-300">Slow Moving:</strong> 1 - 3 transaksi/tahun.</li>
+                            <li><strong class="text-slate-500">Non Moving:</strong> 0 transaksi/tahun.</li>
+                        </ul>
+                        <p class="mt-4">Item ini: <b class="text-white">${item.levelMovement}</b> (dihitung: ${item.transactionCount}x transaksi/tahun)</p>
+                    `;
+                    openDefinitionModal("Definisi: Level Movement", movementDefinitions, item);
+                } else if (cellType === 'stock-status') {
+                    const statusDefinitions = `
+                        <h4 class="text-lg font-semibold text-white mb-2">Definisi Stock Status</h4>
+                        <p class="text-sm">Berdasarkan perbandingan Stock Aktual dengan level MIN (ROP) dan MAX.</p>
+                        <ul class="space-y-3 mt-4 text-sm">
+                            <li><strong class="text-yellow-400">Under Stock:</strong> Stock Aktual &lt; MIN (ROP). Perlu segera order.</li>
+                            <li><strong class="text-green-400">Balance Stock:</strong> Stock Aktual di antara MIN dan MAX.</li>
+                            <li><strong class="text-red-400">Over Stock:</strong> Stock Aktual &gt; MAX. Stok berlebih.</li>
+                        </ul>
+                        <p class="mt-4">Item ini: <b class="text-white">${item.stockStatus}</b></p>
+                    `;
+                    openDefinitionModal("Definisi: Stock Status", statusDefinitions, item);
+                
+                // --- BARU: Menambahkan listener untuk Matriks ABC-XYZ ---
+                } else if (cellType === 'abc-xyz-matrix') {
+                    const matrixCode = item.abcXyzClass;
+                    const abc = matrixCode.charAt(0);
+                    const xyz = matrixCode.charAt(1);
+
+                    // Definisi diambil dari modal info ABC-XYZ
+                    const abcDefs = {
+                        'A': '<b>Kelas A:</b> Item bernilai tinggi (~80% total nilai).',
+                        'B': '<b>Kelas B:</b> Item bernilai menengah (~15% total nilai).',
+                        'C': '<b>Kelas C:</b> Item bernilai rendah (~5% total nilai).'
+                    };
+                    const xyzDefs = {
+                        'X': '<b>Kelas X:</b> Permintaan stabil & mudah diprediksi.',
+                        'Y': '<b>Kelas Y:</b> Permintaan bervariasi.',
+                        'Z': '<b>Kelas Z:</b> Permintaan tidak teratur & sulit diprediksi.'
+                    };
+
+                    const matrixDefinition = `
+                        <h4 class="text-lg font-semibold text-white mb-2">Definisi Matriks: ${matrixCode}</h4>
+                        <div class="space-y-3 mt-4 text-sm">
+                            <p class="flex items-start"><span class="abc-xyz-badge badge-${abc.toLowerCase()} mr-3 mt-1">${abc}</span> ${abcDefs[abc]}</p>
+                            <p class="flex items-start"><span class="abc-xyz-badge badge-${xyz.toLowerCase()} mr-3 mt-1">${xyz}</span> ${xyzDefs[xyz]}</p>
+                        </div>
+                        <p class="mt-4 text-xs text-slate-400">Strategi untuk item <b>${matrixCode}</b> ini adalah menggunakan Target Service Level <b>${(item.serviceLevel*100).toFixed(0)}%</b>.</p>
+                    `;
+                    openDefinitionModal(`Definisi: Matriks ${matrixCode}`, matrixDefinition, item);
+                }
+                // --- AKHIR BLOK BARU ---
+            });
+        }
+
+        // BARU: Listener Klik Ganda pada Header Kolom
+        if (resultsTableHead) {
+             resultsTableHead.addEventListener('dblclick', (e) => {
+                 const header = e.target.closest('th[data-definition]');
+                 if (!header) return;
+
+                 const definitionKey = header.dataset.definition;
+                 const definitionText = headerDefinitions[definitionKey];
+                 const headerText = header.textContent.replace('▲','').replace('▼','').trim(); // Ambil teks header
+
+                 if (definitionText) {
+                     // Tampilkan definisi menggunakan modal yang sama, tanpa info material
+                     openDefinitionModal(`Definisi: ${headerText}`, `<p class="text-base">${definitionText}</p>`, null);
+                 }
+             });
+        }
+
+        // --- BARU: Fungsi-Fungsi Histori ---
+
+        async function populateHistoryDropdown() {
+            if (!historySelect) return;
+            try {
+                const sessions = await HistoryDB.getSessions();
+                historySelect.innerHTML = '<option value="">Pilih sesi untuk dimuat...</option>'; // Reset
+                
+                // Urutkan sesi terbaru di atas
+                sessions.sort((a, b) => b.id - a.id); 
+
+                sessions.forEach(session => {
+                    const option = document.createElement('option');
+                    option.value = session.id;
+                    // Format tanggal untuk ditampilkan
+                    const d = new Date(session.savedAt);
+                    const dateStr = d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    option.textContent = `${session.name} (Disimpan: ${dateStr})`;
+                    historySelect.appendChild(option);
+                });
+
+                if (loadSessionBtn) loadSessionBtn.disabled = true;
+                if (deleteSessionBtn) deleteSessionBtn.disabled = true;
+
+            } catch (error) {
+                console.error("Gagal memuat histori sesi:", error);
+                showStatus("Gagal memuat histori sesi dari database.", true);
+            }
+        }
+
+        async function saveCurrentSession() {
+            if (!sessionNameInput || !saveSessionFeedback || !saveSessionConfirmBtn) return;
+            
+            const name = sessionNameInput.value.trim();
+            if (!name) {
+                saveSessionFeedback.textContent = 'Nama sesi tidak boleh kosong.';
+                saveSessionFeedback.classList.remove('hidden');
+                return;
+            }
+
+            saveSessionConfirmBtn.disabled = true;
+            saveSessionFeedback.textContent = 'Menyimpan...';
+            saveSessionFeedback.classList.remove('hidden');
+
+            try {
+                // --- PERBAIKAN DIMULAI ---
+                // Ambil data dari buffer global (ArrayBuffer) dan konversi ke Base64
+                // Ini lebih andal daripada getItem dari localStorage, jika setItem gagal saat upload.
+                
+                const giFileBase64 = giFileBuffer ? bufferToBase64(giFileBuffer) : null;
+                const ltFileBase64 = ltFileBuffer ? bufferToBase64(ltFileBuffer) : null;
+                const stockFileBase64 = stockFileBuffer ? bufferToBase64(stockFileBuffer) : null;
+                
+                // Ambil nama file dari localStorage (ini seharusnya aman)
+                const giFileName = localStorage.getItem('giFileName');
+                const ltFileName = localStorage.getItem('ltFileName');
+                const stockFileName = localStorage.getItem('stockFileName');
+
+                // Cek data yang sudah dikonversi
+                if (!giFileBase64 || !ltFileBase64 || !stockFileBase64) {
+                    // Lemparkan error yang sama dengan yang terlihat di screenshot
+                    throw new Error("Tidak semua data file ditemukan untuk disimpan.");
+                }
+                // --- PERBAIKAN SELESAI ---
+
+                const sessionData = {
+                    name: name,
+                    savedAt: new Date().toISOString(),
+                    giFileBase64,
+                    ltFileBase64,
+                    stockFileBase64,
+                    giFileName,
+                    ltFileName,
+                    stockFileName
+                };
+
+                await HistoryDB.saveSession(sessionData);
+                
+                saveSessionFeedback.textContent = 'Sesi berhasil disimpan!';
+                await populateHistoryDropdown(); // Refresh dropdown
+
+                setTimeout(() => {
+                    if (saveSessionModal) saveSessionModal.classList.add('hidden');
+                    saveSessionConfirmBtn.disabled = false;
+                }, 1500);
+
+            } catch (error) {
+                console.error("Gagal menyimpan sesi:", error);
+                // Tampilkan pesan error yang konsisten
+                saveSessionFeedback.textContent = `Gagal menyimpan: ${error.message}`;
+                saveSessionConfirmBtn.disabled = false;
+            }
+        }
+
+        async function loadSelectedSession() {
+            if (!historySelect || !historySelect.value) return;
+            const sessionId = parseInt(historySelect.value, 10);
+            
+            showStatus('Memuat sesi histori...', false, true);
+
+            try {
+                const session = await HistoryDB.getSession(sessionId);
+                if (!session) throw new Error("Sesi tidak ditemukan.");
+
+                // --- PERBAIKAN DIMULAI ---
+                // 1. Konversi ke buffer & simpan ke state global (langsung dari data sesi)
+                giFileBuffer = base64ToBuffer(session.giFileBase64);
+                ltFileBuffer = base64ToBuffer(session.ltFileBase64);
+                stockFileBuffer = base64ToBuffer(session.stockFileBase64);
+
+                if (!giFileBuffer || !ltFileBuffer || !stockFileBuffer) {
+                    throw new Error("Gagal mengurai data file dari sesi.");
+                }
+
+                // 2. HANYA simpan NAMA file (data kecil) ke localStorage.
+                // JANGAN simpan data Base64 (data besar) ke localStorage, karena itulah penyebab error.
+                try {
+                    localStorage.setItem('giFileName', session.giFileName);
+                    localStorage.setItem('ltFileName', session.ltFileName);
+                    localStorage.setItem('stockFileName', session.stockFileName);
+
+                    // Hapus data Base64 lama jika ada (untuk membersihkan)
+                    localStorage.removeItem('giFileBase64');
+                    localStorage.removeItem('ltFileBase64');
+                    localStorage.removeItem('stockFileBase64');
+                } catch (e) {
+                    // Ini seharusnya tidak gagal, tapi tambahkan pengaman
+                    console.warn("Gagal menyimpan nama file ke localStorage saat memuat sesi:", e);
+                }
+                // --- PERBAIKAN SELESAI ---
+
+                // 3. Update UI Label (Tetap sama)
+                updateFileLabel(giFileLabel, true, session.giFileName || "File GI", "Pilih File GI");
+                updateFileLabel(ltFileLabel, true, session.ltFileName || "File LT", "Pilih File LT");
+                updateFileLabel(stockFileLabel, true, session.stockFileName || "File Stok", "Pilih File Stok");
+
+                // 4. Aktifkan tombol Hitung (Tetap sama)
+                // DIUBAH: Hapus baris di bawah
+                // updateButtonState();
+                // showStatus('Sesi histori berhasil dimuat. Klik "Hitung Stok" untuk memproses.', false);
+                
+                // BARU: Langsung mulai kalkulasi
+                startCalculation();
+
+            } catch (error) {
+                console.error("Gagal memuat sesi:", error);
+                showStatus(`Gagal memuat sesi: ${error.message}`, true);
+                resetCalculator(); // Reset jika gagal
+            }
+        }
+
+        async function deleteSelectedSession() {
+            if (!historySelect || !historySelect.value) return;
+            const sessionId = parseInt(historySelect.value, 10);
+            const sessionName = historySelect.options[historySelect.selectedIndex].text.split(' (Disimpan:')[0];
+
+            // Konfirmasi kustom (karena confirm() tidak diizinkan)
+            // Untuk saat ini, kita akan langsung hapus. Idealnya, gunakan modal konfirmasi.
+            // if (!confirm(`Anda yakin ingin menghapus sesi "${sessionName}"?`)) {
+            //     return;
+            // }
+
+            try {
+                await HistoryDB.deleteSession(sessionId);
+                showStatus(`Sesi "${sessionName}" berhasil dihapus.`, false);
+                await populateHistoryDropdown(); // Refresh dropdown
+            } catch (error) {
+                console.error("Gagal menghapus sesi:", error);
+                showStatus(`Gagal menghapus sesi: ${error.message}`, true);
+            }
+        }
+
+
+        // --- Listener Modal ABC XYZ Info ---
+        if (learnAbcXyzBtn) learnAbcXyzBtn.addEventListener('click', () => {
+            if (abcXyzInfoModal) abcXyzInfoModal.classList.remove('hidden');
+        });
+        if (abcXyzModalCloseBtn) abcXyzModalCloseBtn.addEventListener('click', () => {
+            if (abcXyzInfoModal) abcXyzInfoModal.classList.add('hidden');
+        });
+        if (abcXyzInfoModal) abcXyzInfoModal.addEventListener('click', (e) => {
+            if (e.target === abcXyzInfoModal) abcXyzInfoModal.classList.add('hidden');
+        });
+
+        // --- Logika Dashboard KPI ---
+        function setupDashboardListeners() {
+            if (toggleDashboardBtn) toggleDashboardBtn.addEventListener('click', toggleDashboard);
+
+            if (kpiNavBalanceBtn) kpiNavBalanceBtn.addEventListener('click', () => {
+                currentKpiType = 'balance';
+                kpiNavBalanceBtn.classList.add('active');
+                kpiNavMovementBtn.classList.remove('active');
+                renderDashboard();
+            });
+
+            if (kpiNavMovementBtn) kpiNavMovementBtn.addEventListener('click', () => {
+                currentKpiType = 'movement';
+                kpiNavMovementBtn.classList.add('active');
+                kpiNavBalanceBtn.classList.remove('active');
+                renderDashboard();
+            });
+
+            if (kpiGroupBySelect) kpiGroupBySelect.addEventListener('change', (e) => {
+                currentKpiGroupBy = e.target.value; // DIUBAH: dari currentKpiType menjadi currentKpiGroupBy
+                renderDashboard();
+            });
+
+            // Listeners Modal Publish
+            if (publishBtn) publishBtn.addEventListener('click', openPublishModal);
+            if (publishModalCloseBtn) publishModalCloseBtn.addEventListener('click', () => publishModal.classList.add('hidden'));
+            if (publishModal) publishModal.addEventListener('click', (e) => (e.target === publishModal) && publishModal.classList.add('hidden'));
+            if (copyUrlBtn) copyUrlBtn.addEventListener('click', copyPublishUrl);
+        }
+
+        function renderDashboard() {
+            if (!dashboardSection || calculationResults.length === 0) return; // Jangan render jika tidak ada data
+            const kpiData = calculateKpiData(currentKpiGroupBy, currentKpiType);
+            renderKpiChart(kpiData, currentKpiType, currentKpiGroupBy);
+            renderKpiSummaryTable(kpiData, currentKpiType, currentKpiGroupBy);
+        }
+
+        function calculateKpiData(groupByKey, kpiType) {
+            const kpiKey = (kpiType === 'balance') ? 'stockStatus' : 'levelMovement';
+            const categories = Object.keys(KPI_COLORS[kpiType]);
+            const groupedData = {};
+
+            calculationResults.forEach(item => {
+                let groupName = item[groupByKey] || 'N/A';
+                if (groupName === 'OTHER' && groupByKey === 'brand') groupName = 'OTHER (N/A)';
+
+                if (!groupedData[groupName]) {
+                    groupedData[groupName] = { Total: 0 };
+                    categories.forEach(cat => groupedData[groupName][cat] = 0);
+                }
+
+                const itemCategory = item[kpiKey];
+                if (categories.includes(itemCategory)) {
+                    groupedData[groupName][itemCategory]++;
+                }
+                groupedData[groupName].Total++;
+            });
+
+            const sortedArray = Object.entries(groupedData).sort(([, a], [, b]) => b.Total - a.Total);
+            const sortedGroupedData = {};
+            for (const [key, value] of sortedArray) {
+                sortedGroupedData[key] = value;
+            }
+            return sortedGroupedData;
+        }
+
+        // DIUBAH: renderKpiChart untuk menampilkan persentase
+        function renderKpiChart(kpiData, kpiType, groupByKey) {
+             if (!kpiChartCanvas) return;
+             const labels = Object.keys(kpiData);
+             const categories = Object.keys(KPI_COLORS[kpiType]);
+             const datasets = categories.map(category => ({
+                 label: category,
+                 data: labels.map(label => kpiData[label][category]),
+                 backgroundColor: KPI_COLORS[kpiType][category],
+                 borderWidth: 0,
+             }));
+
+             if (kpiChartInstance) kpiChartInstance.destroy();
+
+             // Daftarkan plugin jika belum
+             if (Chart.registry.plugins.get('datalabels') === undefined) {
+                 Chart.register(ChartDataLabels);
+             }
+
+             kpiChartInstance = new Chart(kpiChartCanvas, {
+                 type: 'bar',
+                 data: { labels, datasets },
+                 plugins: [ChartDataLabels], // Aktifkan plugin untuk chart ini
+                 options: {
+                     responsive: true,
+                     plugins: {
+                         title: {
+                             display: true,
+                             text: `KPI ${currentKpiType === 'balance' ? 'Min Max Balance' : 'Level Movement'} berdasarkan ${groupByKey}`,
+                             color: '#e2e8f0' // slate-200
+                         },
+                         legend: {
+                             position: 'bottom',
+                             labels: { color: '#94a3b8' } // slate-400
+                         },
+                         tooltip: {
+                             mode: 'index',
+                             intersect: false,
+                             callbacks: {
+                                 label: function(context) {
+                                     let label = context.dataset.label || '';
+                                     if (label) {
+                                         label += ': ';
+                                     }
+                                     const value = context.parsed.y;
+                                     // Hitung total untuk stack bar ini
+                                     const total = context.chart.data.datasets.reduce((sum, ds) => {
+                                         return sum + (ds.data[context.dataIndex] || 0);
+                                     }, 0);
+                                     const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                     label += `${value.toLocaleString()} (${percentage}%)`;
+                                     return label;
+                                 }
+                             }
+                         },
+                         // Konfigurasi Datalabels untuk Persentase
+                         datalabels: {
+                             color: '#fff',
+                             anchor: 'center',
+                             align: 'center',
+                             font: {
+                                 weight: 'bold',
+                                 size: 9
+                             },
+                             formatter: (value, context) => {
+                                 // Hitung total untuk stack bar ini
+                                 const total = context.chart.data.datasets.reduce((sum, ds) => {
+                                     return sum + (ds.data[context.dataIndex] || 0);
+                                 }, 0);
+
+                                 const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
+
+                                 // Tampilkan persentase jika nilainya > 0
+                                 // Diperkecil minimal 5% agar tidak terlalu ramai
+                                 return percentage > 5 ? `${percentage}%` : '';
+                             }
+                         }
+                     },
+                     scales: {
+                         x: {
+                             stacked: true,
+                             ticks: { color: '#94a3b8' }, // slate-400
+                             grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                         },
+                         y: {
+                             stacked: true,
+                             title: { display: true, text: 'Jumlah Item (SKU)', color: '#94a3b8' },
+                             ticks: { color: '#94a3b8' },
+                             grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                         }
+                     }
+                 }
+             });
+        }
+
+        // DIUBAH: renderKpiSummaryTable untuk menampilkan jumlah item
+        function renderKpiSummaryTable(kpiData, kpiType, groupByKey) {
+            if (!kpiSummaryTableContainer || !kpiSummaryTitle) return;
+
+            const categories = Object.keys(KPI_COLORS[kpiType]);
+            kpiSummaryTitle.textContent = `Ringkasan: ${currentKpiType === 'balance' ? 'Min Max Balance' : 'Level Movement'} by ${groupByKey}`;
+
+            let tableHTML = '<table class="min-w-full divide-y divide-slate-700">';
+            // Header
+            tableHTML += '<thead class="bg-slate-800 sticky top-0 z-10"><tr>';
+            tableHTML += `<th class="text-left">${groupByKey}</th>`;
+            categories.forEach(cat => tableHTML += `<th>${cat} (SKU)</th>`); // Header (SKU)
+            tableHTML += '<th>Total (SKU)</th>';
+            tableHTML += '</tr></thead>';
+
+            // Body
+            tableHTML += '<tbody class="divide-y divide-slate-700">';
+            const groups = Object.keys(kpiData);
+            groups.forEach(groupName => {
+                const data = kpiData[groupName];
+                tableHTML += `<tr><td class="text-left font-medium text-white">${groupName}</td>`;
+                categories.forEach(cat => {
+                    const count = data[cat];
+                    // Tampilkan HANYA jumlah item
+                    tableHTML += `<td>${count.toLocaleString()}</td>`;
+                });
+                tableHTML += `<td class="font-bold text-white">${data.Total.toLocaleString()}</td></tr>`;
+            });
+            tableHTML += '</tbody></table>';
+
+            kpiSummaryTableContainer.innerHTML = tableHTML;
+        }
+
+
+        // --- Logika Modal Publish ---
+        function openPublishModal() {
+            if (!publishModal || !publishUrlLink || !publishSummaryData) return;
+
+            // 1. Set URL
+            publishUrlLink.value = window.location.href;
+            if (copyUrlFeedback) copyUrlFeedback.classList.add('hidden');
+
+            // 2. Generate Summary Data
+            const balanceData = calculateKpiData('ALL', 'balance'); // Hitung grand total
+            const totalItems = calculationResults.length;
+            const balanceCats = KPI_COLORS.balance;
+
+            let summaryHTML = '<table class="w-full text-sm text-left">';
+            summaryHTML += '<thead class="bg-slate-800"><tr><th class="p-2">Kategori</th><th class="p-2">Persentase</th><th class="p-2">Jumlah Item</th></tr></thead>';
+            summaryHTML += '<tbody class="divide-y divide-slate-700">';
+
+            let totalBalance = 0;
+            let totalOver = 0;
+            let totalUnder = 0;
+
+            if (balanceData['ALL']) {
+                 totalBalance = balanceData['ALL']['Balance Stock'] || 0;
+                 totalOver = balanceData['ALL']['Over Stock'] || 0;
+                 totalUnder = balanceData['ALL']['Under Stock'] || 0;
+            }
+
+            const data = [
+                { cat: 'Balance Stock', count: totalBalance, color: balanceCats['Balance Stock'] },
+                { cat: 'Over Stock', count: totalOver, color: balanceCats['Over Stock'] },
+                { cat: 'Under Stock', count: totalUnder, color: balanceCats['Under Stock'] }
+            ];
+
+            data.forEach(item => {
+                const percent = (totalItems > 0) ? ((item.count / totalItems) * 100).toFixed(1) : '0.0';
+                summaryHTML += `<tr>
+                    <td class="p-2 font-medium" style="color:${item.color}">${item.cat}</td>
+                    <td class="p-2">${percent}%</td>
+                    <td class="p-2">${item.count.toLocaleString()}</td>
+                </tr>`;
+            });
+
+            summaryHTML += `<tr class="bg-slate-800 font-bold"><td class="p-2">Total</td><td class="p-2">100.0%</td><td class="p-2">${totalItems.toLocaleString()}</td></tr>`;
+            summaryHTML += '</tbody></table>';
+
+            publishSummaryData.innerHTML = summaryHTML;
+
+            // 3. Tampilkan Modal
+            publishModal.classList.remove('hidden');
+        }
+
+        function copyPublishUrl() {
+            if (!publishUrlLink || !copyUrlFeedback) return;
+            publishUrlLink.select();
+            publishUrlLink.setSelectionRange(0, 99999);
+            try {
+                // Menggunakan navigator.clipboard.writeText untuk kompatibilitas modern
+                navigator.clipboard.writeText(publishUrlLink.value).then(() => {
+                    copyUrlFeedback.textContent = 'Tersalin ke clipboard!';
+                    copyUrlFeedback.classList.remove('hidden');
+                    setTimeout(() => { copyUrlFeedback.classList.add('hidden'); }, 2000);
+                }, () => {
+                    // Fallback ke execCommand jika navigator.clipboard gagal
+                    throw new Error('Navigator clipboard failed');
+                });
+            } catch (err) {
+                // Fallback untuk browser lama atau lingkungan tidak aman (non-HTTPS)
+                try {
+                    // Deprecated but necessary for fallback
+                    if (!document.execCommand('copy')) {
+                        throw new Error('execCommand gagal');
+                    }
+                    copyUrlFeedback.textContent = 'Tersalin ke clipboard! (Fallback)';
+                    copyUrlFeedback.classList.remove('hidden');
+                } catch (execErr) {
+                    console.error('Gagal menyalin:', execErr);
+                    copyUrlFeedback.textContent = 'Gagal menyalin. Salin manual.';
+                    copyUrlFeedback.classList.remove('hidden');
+                }
+                setTimeout(() => { copyUrlFeedback.classList.add('hidden'); }, 2000);
+            }
+        }
+
+        // --- Fungsi Toggle Dashboard ---
+        function toggleDashboard() {
+            isDashboardVisible = !isDashboardVisible;
+            updateDashboardVisibility();
+        }
+
+        function updateDashboardVisibility() {
+            if (dashboardSection) {
+                 dashboardSection.classList.toggle('hidden', !isDashboardVisible);
+            }
+            if (toggleDashboardBtn) {
+                 toggleDashboardBtn.classList.toggle('active', isDashboardVisible);
+                 if (toggleDashboardText) {
+                     toggleDashboardText.textContent = isDashboardVisible ? 'Sembunyikan Dashboard' : 'Tampilkan Dashboard';
+                 }
+            }
+        }
+
+        // --- Initialize on load ---
+        
+        // BARU: Inisialisasi state dari localStorage saat load
+        try {
+            const giBase64 = localStorage.getItem('giFileBase64');
+            const giFileName = localStorage.getItem('giFileName'); // BARU
+            if (giBase64) {
+                giFileBuffer = base64ToBuffer(giBase64);
+                if(giFileBuffer) updateFileLabel(giFileLabel, true, giFileName || "File GI Tersimpan", "Pilih File GI"); // DIUBAH
+            }
+        } catch(e) { console.warn("Cache GI rusak, mengabaikan."); localStorage.removeItem('giFileBase64'); localStorage.removeItem('giFileName'); }
+
+        try {
+            const ltBase64 = localStorage.getItem('ltFileBase64');
+            const ltFileName = localStorage.getItem('ltFileName'); // BARU
+            if (ltBase64) {
+                ltFileBuffer = base64ToBuffer(ltBase64);
+                if(ltFileBuffer) updateFileLabel(ltFileLabel, true, ltFileName || "File LT Tersimpan", "Pilih File LT"); // DIUBAH
+            }
+        } catch(e) { console.warn("Cache LT rusak, mengabaikan."); localStorage.removeItem('ltFileBase64'); localStorage.removeItem('ltFileName'); }
+
+        try {
+            const stockBase64 = localStorage.getItem('stockFileBase64');
+            const stockFileName = localStorage.getItem('stockFileName'); // BARU
+            if (stockBase64) {
+                stockFileBuffer = base64ToBuffer(stockBase64);
+                if(stockFileBuffer) updateFileLabel(stockFileLabel, true, stockFileName || "File Stok Tersimpan", "Pilih File Stok"); // DIUBAH
+            }
+        } catch(e) { console.warn("Cache Stok rusak, mengabaikan."); localStorage.removeItem('stockFileBase64'); localStorage.removeItem('stockFileName'); }
+        
+        updateButtonState(); // Aktifkan tombol 'Hitung' jika semua file sudah ada
+
+        setupDashboardListeners(); // Menyiapkan listener dashboard, termasuk tombol toggle
+
+        // BARU: Inisialisasi DB Histori dan isi dropdown
+        HistoryDB.init().then(() => {
+            console.log("Database histori berhasil diinisialisasi.");
+            populateHistoryDropdown();
+        }).catch(err => {
+            console.error("Gagal inisialisasi IndexedDB:", err);
+            showStatus("Tidak dapat memuat fitur histori.", true);
+        });
+
+    }); // Akhir dari DOMContentLoaded
+    </script>
+</body>
+</html>
